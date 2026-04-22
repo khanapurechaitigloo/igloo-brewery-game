@@ -2,488 +2,399 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Igloo Brewery — Interactive Brew</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1">
+<title>Igloo Brewery</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0d0d1a;overflow:hidden;touch-action:none;font-family:'Segoe UI',system-ui,sans-serif}
-canvas{display:block}
+html,body{width:100%;height:100%;overflow:hidden;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;
+  font-family:'Segoe UI',system-ui,sans-serif;background:#0d0d1a}
+canvas{display:block;position:absolute;top:0;left:0}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <script>
 const C=document.getElementById('c'),X=C.getContext('2d');
-const W=1280,H=768;
-let scale=1;
-
+let W,H,sc;
 function resize(){
-  scale=Math.min(innerWidth/W,innerHeight/H);
+  W=innerWidth;H=innerHeight;
   C.width=W;C.height=H;
-  C.style.width=W*scale+'px';C.style.height=H*scale+'px';
+  sc=W/1280; // base scale
 }
 resize();addEventListener('resize',resize);
 
-const GAME_W=3200;
-
+// ─── CONFIG ───
+const GAME_W=2800;
 const MACHINES=[
-  {id:'silo',name:'Malt Silo',icon:'🌾',color:'#F7B747',ctrl:'lever',x:200},
-  {id:'mill',name:'Milling',icon:'⚙️',color:'#c47a2c',ctrl:'hold',x:520},
-  {id:'mash',name:'Mashing',icon:'💧',color:'#39959E',ctrl:'dual',x:840},
-  {id:'lauter',name:'Lautering',icon:'🔪',color:'#E2A440',ctrl:'dual',x:1160},
-  {id:'boil',name:'Boiling',icon:'🔥',color:'#E24422',ctrl:'hold',x:1480},
-  {id:'cool',name:'Cooling',icon:'❄️',color:'#5599CC',ctrl:'dual',x:1800},
-  {id:'ferment',name:'Fermentation',icon:'🫧',color:'#88AA44',ctrl:'lever',x:2120},
-  {id:'filter',name:'Filtration',icon:'🔬',color:'#999999',ctrl:'lever',x:2440},
-  {id:'package',name:'Packaging',icon:'🍺',color:'#AA8833',ctrl:'lever',x:2760},
+  {id:'silo',name:'Malt Silo',icon:'🌾',color:'#F7B747',ctrl:'lever'},
+  {id:'mill',name:'Milling',icon:'⚙️',color:'#c47a2c',ctrl:'hold'},
+  {id:'mash',name:'Mashing',icon:'💧',color:'#39959E',ctrl:'dual'},
+  {id:'lauter',name:'Lautering',icon:'🔪',color:'#E2A440',ctrl:'dual'},
+  {id:'boil',name:'Boiling',icon:'🔥',color:'#E24422',ctrl:'hold'},
+  {id:'cool',name:'Cooling',icon:'❄️',color:'#5599CC',ctrl:'dual'},
+  {id:'ferment',name:'Fermentation',icon:'🫧',color:'#88AA44',ctrl:'lever'},
+  {id:'filter',name:'Filtration',icon:'🔬',color:'#999999',ctrl:'lever'},
+  {id:'package',name:'Packaging',icon:'🍺',color:'#AA8833',ctrl:'lever'},
 ];
 
-let state='menu';
-let score=0,displayScore=0,timeLeft=180,timerAcc=0;
-let scrollX=0,targetScrollX=0;
-let machines=[],particles=[],gameTime=0;
-let msg='Pull the lever on 🌾 Malt Silo to start!';
-let activeIdx=0; // which machine player should work on next
+let state='menu',score=0,dispScore=0,timeLeft=180,timerAcc=0;
+let scrollX=0,tScrollX=0,touchSX=0,touchSSX=0;
+let machines=[],particles=[],gt=0,activeIdx=0;
+let msg='Pull 🌾 Silo lever to start!';
+let isMobile='ontouchstart'in window;
 
-function initMachines(){
-  machines=MACHINES.map((m,i)=>({
-    ...m,idx:i,
-    fill:0,process:0,
-    active:false,done:false,
-    leverPulled:false,
-    holdPower:0,holding:false,
-    toggleL:false,toggleR:false,toggleBalance:0.5,
-    depleted:false,
-    grainFall:[],
-    shakeX:0,
-  }));
-  score=0;displayScore=0;timeLeft=180;timerAcc=0;
-  scrollX=0;targetScrollX=0;particles=[];gameTime=0;activeIdx=0;
-  msg='Pull the lever on 🌾 Malt Silo to start!';
+function init(){
+  machines=MACHINES.map((m,i)=>({...m,idx:i,fill:0,process:0,active:false,done:false,
+    lever:false,hold:0,holding:false,togL:false,togR:false,bal:0.5,depleted:false,shake:0,grain:[]}));
+  score=0;dispScore=0;timeLeft=180;timerAcc=0;scrollX=0;tScrollX=0;particles=[];gt=0;activeIdx=0;
+  msg='Pull 🌾 Silo lever to start!';
 }
 
 // ─── HELPERS ───
 function lerp(a,b,t){return a+(b-a)*t}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function rnd(a,b){return a+Math.random()*(b-a)}
-function lighten(hex,n){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return '#'+[Math.min(255,r+n),Math.min(255,g+n),Math.min(255,b+n)].map(c=>c.toString(16).padStart(2,'0')).join('');}
-
+function lighten(h,n){let r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);return'#'+[Math.min(255,r+n),Math.min(255,g+n),Math.min(255,b+n)].map(c=>c.toString(16).padStart(2,'0')).join('');}
 function rr(x,y,w,h,r){X.beginPath();X.moveTo(x+r,y);X.lineTo(x+w-r,y);X.quadraticCurveTo(x+w,y,x+w,y+r);X.lineTo(x+w,y+h-r);X.quadraticCurveTo(x+w,y+h,x+w-r,y+h);X.lineTo(x+r,y+h);X.quadraticCurveTo(x,y+h,x,y+h-r);X.lineTo(x,y+r);X.quadraticCurveTo(x,y,x+r,y);X.closePath();}
 function frr(x,y,w,h,r,c){rr(x,y,w,h,r);X.fillStyle=c;X.fill();}
 function srr(x,y,w,h,r,c,lw){rr(x,y,w,h,r);X.strokeStyle=c;X.lineWidth=lw||2;X.stroke();}
-function txt(s,x,y,sz,c,a){X.font='bold ${sz}px "Segoe UI",system-ui,sans-serif';X.fillStyle=c||'#cdb18a';X.textAlign=a||'center';X.textBaseline='middle';X.fillText(s,x,y);}
+function txt(s,x,y,sz,c,a){X.font='bold '+sz+'px "Segoe UI",system-ui,sans-serif';X.fillStyle=c||'#cdb18a';X.textAlign=a||'center';X.textBaseline='middle';X.fillText(s,x,y);}
 
-// ─── BACKGROUND ───
+// ─── LAYOUT (responsive) ───
+function getLayout(){
+  const topBar=50;
+  const stepBar=45;
+  const botBar=55;
+  const machineArea=H-topBar-stepBar-botBar;
+  const machineY=topBar+stepBar+machineArea*0.35;
+  const controlY=machineY+machineArea*0.32;
+  const machineSize=Math.min(120,machineArea*0.28);
+  const ctrlSize=Math.min(80,machineArea*0.2);
+  const spacing=Math.min(280,W/3.2);
+  const startX=W*0.18;
+  return{topBar,stepBar,botBar,machineY,controlY,machineSize,ctrlSize,spacing,startX};
+}
+
+// ─── DRAW ───
 function drawBG(){
   const sg=X.createLinearGradient(0,0,0,H);
-  sg.addColorStop(0,'#0a0a18');sg.addColorStop(0.5,'#151528');sg.addColorStop(1,'#1e1e36');
+  sg.addColorStop(0,'#0a0a18');sg.addColorStop(0.6,'#151528');sg.addColorStop(1,'#1e1e36');
   X.fillStyle=sg;X.fillRect(0,0,W,H);
 
-  const b1=(scrollX*0.3)%250;
-  X.fillStyle='#1a1a30';
-  for(let i=-1;i<16;i++){
-    const bx=i*250-b1;X.fillRect(bx,80,200,420);
-    for(let j=0;j<5;j++){
-      X.fillStyle='#222244';X.fillRect(bx+20,110+j*75,35,30);
-      X.fillStyle='#2a2a50';X.fillRect(bx+70,110+j*75,35,30);
-      X.fillStyle='#1e1e40';X.fillRect(bx+120,110+j*75,35,30);
-      X.fillStyle='#1a1a30';
+  // Simple buildings
+  for(let i=0;i<8;i++){
+    const bx=i*(W/6)-scrollX*0.3%(W/6);
+    X.fillStyle='#1a1a30';X.fillRect(bx,40,W/7,H*0.6);
+    for(let j=0;j<4;j++){
+      X.fillStyle='#222244';X.fillRect(bx+W/7*0.15,60+j*80,W/7*0.2,35);
+      X.fillStyle='#2a2a50';X.fillRect(bx+W/7*0.45,60+j*80,W/7*0.2,35);
     }
   }
-  const b2=(scrollX*0.6)%350;
-  X.fillStyle='#20203a';
-  for(let i=-1;i<12;i++){
-    const bx=i*350-b2;X.fillRect(bx,160,280,360);
-    X.fillStyle='#2a2a48';X.fillRect(bx+10,200,260,5);X.fillRect(bx+10,320,260,5);
-    X.fillStyle='#20203a';
-  }
-
-  const fg=X.createLinearGradient(0,530,0,H);
-  fg.addColorStop(0,'#252544');fg.addColorStop(1,'#1a1a32');
-  X.fillStyle=fg;X.fillRect(0,530,W,H-530);
+  // Floor
+  X.fillStyle='#1e1e36';X.fillRect(0,H*0.72,W,H*0.28);
   X.strokeStyle='#2a2a48';X.lineWidth=1;
-  const ft=(scrollX)%80;
-  for(let i=-1;i<20;i++){X.beginPath();X.moveTo(i*80-ft,530);X.lineTo(i*80-ft,H);X.stroke();}
+  for(let i=0;i<W/50+1;i++){const tx=i*50-scrollX*0.8%50;X.beginPath();X.moveTo(tx,H*0.72);X.lineTo(tx,H);X.stroke();}
 
-  const lo=(scrollX*0.8)%200;
-  for(let i=-1;i<10;i++){
-    const lx=i*200+100-lo;
-    X.strokeStyle='#444';X.lineWidth=2;X.beginPath();X.moveTo(lx,0);X.lineTo(lx,55);X.stroke();
-    const gl=X.createRadialGradient(lx,62,3,lx,62,70);
-    gl.addColorStop(0,'rgba(255,220,150,0.12)');gl.addColorStop(1,'rgba(255,220,150,0)');
-    X.fillStyle=gl;X.fillRect(lx-70,50,140,140);
-    X.beginPath();X.arc(lx,62,7,0,Math.PI*2);X.fillStyle='#ffdd99';X.fill();
+  // Lights
+  for(let i=0;i<W/120+1;i++){
+    const lx=i*120+60-scrollX*0.5%120;
+    X.strokeStyle='#444';X.lineWidth=1;X.beginPath();X.moveTo(lx,0);X.lineTo(lx,35);X.stroke();
+    const gl=X.createRadialGradient(lx,40,2,lx,40,50);
+    gl.addColorStop(0,'rgba(255,220,150,0.1)');gl.addColorStop(1,'rgba(255,220,150,0)');
+    X.fillStyle=gl;X.fillRect(lx-50,30,100,100);
+    X.beginPath();X.arc(lx,40,5,0,Math.PI*2);X.fillStyle='#ffdd99';X.fill();
   }
 }
 
-// ─── DRAW MACHINE ───
-function drawMachine(m){
-  const sx=m.x-scrollX;
-  if(sx<-200||sx>W+200)return;
-  const mx=sx+(m.shakeX||0),my=370,mw=130,mh=180;
+function drawMachine(m,L){
+  const sx=L.startX+m.idx*L.spacing-scrollX;
+  if(sx<-150||sx>W+150)return;
+  const mx=sx,my=L.machineY,mw=L.machineSize,mh=L.machineSize*1.1;
 
   // Shadow
-  X.fillStyle='rgba(0,0,0,0.25)';
-  X.beginPath();X.ellipse(mx,my+mh/2+28,mw/2+8,12,0,0,Math.PI*2);X.fill();
+  X.fillStyle='rgba(0,0,0,0.2)';
+  X.beginPath();X.ellipse(mx,my+mh/2+10,mw/2+5,8,0,0,Math.PI*2);X.fill();
 
-  // Machine body
+  // Body
   const bg=X.createLinearGradient(mx-mw/2,my-mh/2,mx+mw/2,my+mh/2);
-  bg.addColorStop(0,m.active?lighten(m.color,50):'#4a4a5a');
+  bg.addColorStop(0,m.active?lighten(m.color,40):'#4a4a5a');
   bg.addColorStop(1,m.active?m.color:'#333344');
   frr(mx-mw/2,my-mh/2,mw,mh,10,bg);
   srr(mx-mw/2,my-mh/2,mw,mh,10,m.active?'#ffd08a':m.done?'#7dde92':'#555566',3);
 
-  // Fill level
+  // Fill
   if(m.fill>0){
-    const fH=(mh-20)*(m.fill/100);
-    X.save();X.beginPath();X.rect(mx-mw/2+5,my-mh/2+5,mw-10,mh-10);X.clip();
-    frr(mx-mw/2+5,my+mh/2-5-fH,mw-10,fH,0,m.color+'88');
+    const fH=(mh-16)*(m.fill/100);
+    X.save();X.beginPath();X.rect(mx-mw/2+4,my-mh/2+4,mw-8,mh-8);X.clip();
+    frr(mx-mw/2+4,my+mh/2-4-fH,mw-8,fH,0,m.color+'88');
     X.restore();
   }
 
-  // Icon (bigger)
-  X.font='40px serif';X.textAlign='center';X.textBaseline='middle';
-  X.fillText(m.icon,mx,my-12);
+  // Icon
+  X.font=(mw*0.3)+'px serif';X.textAlign='center';X.textBaseline='middle';
+  X.fillText(m.icon,mx,my-5);
 
-  // Process bar inside machine
-  const bw=mw-20,bh=8,bx=mx-bw/2,by=my+mh/2-18;
-  frr(bx,by,bw,bh,4,'#1a1a2a');
-  if(m.process>0){
-    frr(bx,by,bw*(m.process/100),bh,4,m.active?'#1A9900':'#cc2800');
-  }
-
-  // Status light
-  const ly=my-mh/2-22;
-  if(m.depleted&&!m.active){
-    const p=Math.sin(gameTime*5)*0.3+0.7;
-    X.globalAlpha=p;X.beginPath();X.arc(mx,ly,9,0,Math.PI*2);X.fillStyle='#cc2800';X.fill();X.globalAlpha=1;
-  }else if(m.active){
-    X.shadowColor='#1A9900';X.shadowBlur=15;
-    X.beginPath();X.arc(mx,ly,9,0,Math.PI*2);X.fillStyle='#1A9900';X.fill();
-    X.shadowBlur=0;
-  }else if(m.done){
-    X.beginPath();X.arc(mx,ly,9,0,Math.PI*2);X.fillStyle='#7dde92';X.fill();
-  }
-
-  // ─── CONTROLS (bigger!) ───
-  const cy=my+mh/2+55;
-  const isActiveMachine = m.idx === activeIdx;
-
-  if(m.ctrl==='lever'){
-    // Big lever
-    const lw=30,lh=55;
-    frr(mx-lw/2,cy-lh/2,lw,lh,6,'#2a2a3a');
-    srr(mx-lw/2,cy-lh/2,lw,lh,6,m.leverPulled?'#4a9eff':'#666',2);
-    const knobY=m.leverPulled?cy+15:cy-18;
-    frr(mx-18,knobY,36,16,6,m.leverPulled?'#4a9eff':'#aaa');
-    // Glow if active machine
-    if(isActiveMachine&&!m.leverPulled){
-      X.shadowColor='#ffd08a';X.shadowBlur=15+Math.sin(gameTime*4)*8;
-      srr(mx-lw/2-3,cy-lh/2-3,lw+6,lh+6,8,'#ffd08a',2);
-      X.shadowBlur=0;
-    }
-    txt('PULL',mx,cy+lh/2+16,12,'#888');
-  }else if(m.ctrl==='hold'){
-    // Big power button
-    const pr=28;
-    X.beginPath();X.arc(mx,cy,pr+4,0,Math.PI*2);X.fillStyle='#2a2a3a';X.fill();
-    X.strokeStyle='#666';X.lineWidth=3;X.stroke();
-    X.beginPath();X.arc(mx,cy,pr,0,Math.PI*2);
-    X.fillStyle=m.holding?'#ff6644':'#555';X.fill();
-    // Power bolt
-    X.strokeStyle='#fff';X.lineWidth=3;X.beginPath();
-    X.moveTo(mx+3,cy-12);X.lineTo(mx-3,cy);X.lineTo(mx+5,cy);
-    X.lineTo(mx-3,cy+12);X.lineTo(mx+1,cy+1);X.lineTo(mx-4,cy+1);X.stroke();
-    // Charge bar
-    if(m.holding||m.holdPower>0){
-      frr(mx-30,cy+pr+8,60,8,4,'#1a1a2a');
-      frr(mx-30,cy+pr+8,60*(m.holdPower/100),8,4,'#ff6644');
-    }
-    if(isActiveMachine&&!m.holding){
-      X.shadowColor='#ffd08a';X.shadowBlur=15+Math.sin(gameTime*4)*8;
-      X.beginPath();X.arc(mx,cy,pr+4,0,Math.PI*2);X.strokeStyle='#ffd08a';X.lineWidth=2;X.stroke();
-      X.shadowBlur=0;
-    }
-    txt('HOLD',mx,cy+pr+30,12,'#888');
-  }else if(m.ctrl==='dual'){
-    // Big toggle buttons
-    const tw=44,th=36;
-    // Left
-    frr(mx-50,cy-th/2,tw,th,8,m.toggleL?'#4a9eff':'#333');
-    srr(mx-50,cy-th/2,tw,th,8,m.toggleL?'#6ac0ff':'#666',2);
-    txt('◀',mx-28,cy,20,m.toggleL?'#fff':'#888');
-    // Right
-    frr(mx+6,cy-th/2,tw,th,8,m.toggleR?'#4a9eff':'#333');
-    srr(mx+6,cy-th/2,tw,th,8,m.toggleR?'#6ac0ff':'#666',2);
-    txt('▶',mx+28,cy,20,m.toggleR?'#fff':'#888');
-    // Balance bar
-    frr(mx-35,cy+th/2+8,70,10,5,'#1a1a2a');
-    const balX=mx-35+70*m.toggleBalance;
-    frr(balX-6,cy+th/2+6,12,14,7,m.toggleBalance>0.35&&m.toggleBalance<0.65?'#1A9900':'#ffd08a');
-    if(isActiveMachine&&!m.toggleL&&!m.toggleR){
-      X.shadowColor='#ffd08a';X.shadowBlur=15+Math.sin(gameTime*4)*8;
-      srr(mx-55,cy-th/2-3,110,th+6,10,'#ffd08a',2);
-      X.shadowBlur=0;
-    }
-    txt('ADJUST',mx,cy+th/2+30,11,'#888');
-  }
+  // Status
+  const ly=my-mh/2-14;
+  if(m.depleted&&!m.active){const p=Math.sin(gt*5)*0.3+0.7;X.globalAlpha=p;X.beginPath();X.arc(mx,ly,8,0,Math.PI*2);X.fillStyle='#cc2800';X.fill();X.globalAlpha=1;}
+  else if(m.active){X.shadowColor='#1A9900';X.shadowBlur=12;X.beginPath();X.arc(mx,ly,8,0,Math.PI*2);X.fillStyle='#1A9900';X.fill();X.shadowBlur=0;}
+  else if(m.done){X.beginPath();X.arc(mx,ly,8,0,Math.PI*2);X.fillStyle='#7dde92';X.fill();}
 
   // Name
-  txt(m.name,mx,my-mh/2-42,14,isActiveMachine?'#ffd08a':'#888');
+  txt(m.name,mx,my-mh/2-28,Math.max(11,mw*0.11),m.idx===activeIdx?'#ffd08a':'#888');
+
+  // Process bar
+  const bw=mw-10,bh=6;
+  frr(mx-bw/2,my+mh/2-10,bw,bh,3,'#1a1a2a');
+  if(m.process>0)frr(mx-bw/2,my+mh/2-10,bw*(m.process/100),bh,3,m.active?'#1A9900':'#cc2800');
 
   // Grain fall
-  m.grainFall.forEach(p=>{
-    X.globalAlpha=0.9;
-    X.beginPath();X.arc(sx+p.x,p.y,4,0,Math.PI*2);X.fillStyle=m.color;X.fill();
-    X.globalAlpha=1;
-  });
+  m.grain.forEach(p=>{X.globalAlpha=0.8;X.beginPath();X.arc(sx+p.x,p.y,3,0,Math.PI*2);X.fillStyle=m.color;X.fill();X.globalAlpha=1;});
 }
 
-// ─── PIPES ───
-function drawPipes(){
-  for(let i=0;i<machines.length-1;i++){
-    const m1=machines[i],m2=machines[i+1];
-    const x1=m1.x-scrollX+65,x2=m2.x-scrollX-65,y=440;
-    const flowing=m1.done||m1.active;
-    X.fillStyle=flowing?'#446688':'#333350';
-    X.fillRect(x1,y-6,x2-x1,12);
-    X.fillStyle=flowing?'#557799':'#444466';
-    X.fillRect(x1-4,y-8,12,16);X.fillRect(x2-8,y-8,12,16);
-    if(flowing){
-      const t=gameTime*1.5+i;
-      for(let j=0;j<8;j++){
-        const fx=x1+((t+j*0.13)%1)*(x2-x1);
-        X.globalAlpha=0.7;X.beginPath();X.arc(fx,y,5,0,Math.PI*2);X.fillStyle='#4a9eff';X.fill();X.globalAlpha=1;
-      }
+function drawControl(m,L){
+  const sx=L.startX+m.idx*L.spacing-scrollX;
+  if(sx<-150||sx>W+150)return;
+  const cx=sx,cy=L.controlY,s=L.ctrlSize;
+  const isNext=m.idx===activeIdx&&!m.active&&!m.done;
+
+  if(m.ctrl==='lever'){
+    // Big touch-friendly lever
+    const lw=s*0.5,lh=s*0.8;
+    frr(cx-lw/2,cy-lh/2,lw,lh,8,'#2a2a3a');
+    srr(cx-lw/2,cy-lh/2,lw,lh,8,m.lever?'#4a9eff':'#666',3);
+    const ky=m.lever?cy+lh*0.25:cy-lh*0.3;
+    frr(cx-lw*0.6,ky,lw*1.2,lh*0.25,6,m.lever?'#4a9eff':'#bbb');
+    if(isNext){X.shadowColor='#ffd08a';X.shadowBlur=12+Math.sin(gt*4)*8;srr(cx-lw/2-4,cy-lh/2-4,lw+8,lh+8,10,'#ffd08a',3);X.shadowBlur=0;}
+    txt('PULL',cx,cy+lh/2+16,Math.max(12,s*0.18),'#aaa');
+  }else if(m.ctrl==='hold'){
+    // Big power button
+    const pr=s*0.38;
+    X.beginPath();X.arc(cx,cy,pr+4,0,Math.PI*2);X.fillStyle='#2a2a3a';X.fill();
+    X.strokeStyle='#666';X.lineWidth=3;X.stroke();
+    const isCharging=m.hold||m.hold>0;
+    X.beginPath();X.arc(cx,cy,pr,0,Math.PI*2);
+    X.fillStyle=isCharging?'#ff6644':'#555';X.fill();
+    // Bolt
+    X.strokeStyle='#fff';X.lineWidth=Math.max(2,pr*0.1);X.beginPath();
+    X.moveTo(cx+pr*0.1,cy-pr*0.4);X.lineTo(cx-pr*0.1,cy);X.lineTo(cx+pr*0.15,cy);
+    X.lineTo(cx-pr*0.1,cy+pr*0.4);X.lineTo(cx+pr*0.05,cy+pr*0.05);X.lineTo(cx-pr*0.12,cy+pr*0.05);X.stroke();
+    // Charge bar
+    if(m.hold>0){
+      frr(cx-pr,cy+pr+10,pr*2,10,5,'#1a1a2a');
+      frr(cx-pr,cy+pr+10,pr*2*(m.hold/100),10,5,'#ff6644');
     }
+    if(isNext){X.shadowColor='#ffd08a';X.shadowBlur=12+Math.sin(gt*4)*8;X.beginPath();X.arc(cx,cy,pr+6,0,Math.PI*2);X.strokeStyle='#ffd08a';X.lineWidth=2;X.stroke();X.shadowBlur=0;}
+    txt('HOLD',cx,cy+pr+30,Math.max(12,s*0.18),'#aaa');
+  }else if(m.ctrl==='dual'){
+    // Big toggle buttons
+    const tw=s*0.4,th=s*0.5;
+    // Left
+    frr(cx-tw-8,cy-th/2,tw,th,10,m.togL?'#4a9eff':'#333');
+    srr(cx-tw-8,cy-th/2,tw,th,10,m.togL?'#6ac0ff':'#666',2.5);
+    txt('◀',cx-tw-8+tw/2,cy,Math.max(18,s*0.25),m.togL?'#fff':'#888');
+    // Right
+    frr(cx+8,cy-th/2,tw,th,10,m.togR?'#4a9eff':'#333');
+    srr(cx+8,cy-th/2,tw,th,10,m.togR?'#6ac0ff':'#666',2.5);
+    txt('▶',cx+8+tw/2,cy,Math.max(18,s*0.25),m.togR?'#fff':'#888');
+    // Balance
+    frr(cx-s*0.3,cy+th/2+8,s*0.6,10,5,'#1a1a2a');
+    const bx=cx-s*0.3+s*0.6*m.bal;
+    frr(bx-8,cy+th/2+6,16,14,7,m.bal>0.35&&m.bal<0.65?'#1A9900':'#ffd08a');
+    if(isNext){X.shadowColor='#ffd08a';X.shadowBlur=12+Math.sin(gt*4)*8;srr(cx-s*0.3-8,cy-th/2-6,s*0.6+16,th+16,12,'#ffd08a',2);X.shadowBlur=0;}
+    txt('ADJUST',cx,cy+th/2+30,Math.max(11,s*0.15),'#888');
   }
 }
 
-// ─── UI ───
-function drawUI(){
-  X.fillStyle='rgba(10,10,24,0.92)';X.fillRect(0,0,W,58);
-  X.strokeStyle='#333';X.lineWidth=1;X.beginPath();X.moveTo(0,58);X.lineTo(W,58);X.stroke();
-  txt('🍺 Igloo Brewery',200,30,18,'#ffd08a');
-  txt(displayScore.toFixed(0)+' L',W-190,30,22,'#1A9900','right');
-  const m=Math.floor(timeLeft/60),s=Math.floor(timeLeft%60);
-  txt(m+':'+s.toString().padStart(2,'0'),W-60,30,24,timeLeft<30?'#cc2800':'#ff6b6b','right');
+function drawPipes(L){
+  for(let i=0;i<machines.length-1;i++){
+    const x1=L.startX+i*L.spacing+L.machineSize/2-scrollX;
+    const x2=L.startX+(i+1)*L.spacing-L.machineSize/2-scrollX;
+    const y=L.machineY+L.machineSize*0.55;
+    const fl=machines[i].done||machines[i].active;
+    X.fillStyle=fl?'#446688':'#333350';X.fillRect(x1,y-5,x2-x1,10);
+    X.fillStyle=fl?'#557799':'#444466';X.fillRect(x1-3,y-7,10,14);X.fillRect(x2-7,y-7,10,14);
+    if(fl){const t=gt*1.5+i;for(let j=0;j<6;j++){const fx=x1+((t+j*0.17)%1)*(x2-x1);X.globalAlpha=0.6;X.beginPath();X.arc(fx,y,4,0,Math.PI*2);X.fillStyle='#4a9eff';X.fill();X.globalAlpha=1;}}
+  }
+}
 
-  // Step indicators
-  const sY=72,sW=W/machines.length;
+function drawUI(L){
+  // Top bar
+  X.fillStyle='rgba(10,10,24,0.95)';X.fillRect(0,0,W,L.topBar);
+  txt('🍺 Igloo Brewery',W*0.25,L.topBar/2,Math.min(20,W*0.035),'#ffd08a');
+  txt(dispScore.toFixed(0)+' L',W-140,L.topBar/2,Math.min(22,W*0.04),'#1A9900','right');
+  const m=Math.floor(timeLeft/60),s=Math.floor(timeLeft%60);
+  txt(m+':'+s.toString().padStart(2,'0'),W-30,L.topBar/2,Math.min(24,W*0.045),timeLeft<30?'#cc2800':'#ff6b6b','right');
+
+  // Step bar
+  const sY=L.topBar+L.stepBar/2+4;
+  const sW=W/machines.length;
   machines.forEach((m,i)=>{
     const sx=sW*i+sW/2;
-    if(i<machines.length-1){
-      X.strokeStyle=m.done?'#4a9eff':'#333';X.lineWidth=3;
-      X.beginPath();X.moveTo(sx+18,sY);X.lineTo(sx+sW-18,sY);X.stroke();
-    }
+    if(i<machines.length-1){X.strokeStyle=m.done?'#4a9eff':'#333';X.lineWidth=2;X.beginPath();X.moveTo(sx+sW*0.3,sY);X.lineTo(sx+sW*0.7,sY);X.stroke();}
     const cc=m.active?'#1A9900':m.depleted?'#cc2800':m.done?'#7dde92':i===activeIdx?'#ffd08a':'#444';
-    X.beginPath();X.arc(sx,sY,16,0,Math.PI*2);X.fillStyle=cc;X.fill();
-    if(i===activeIdx&&!m.done&&!m.active){
-      X.strokeStyle='#ffd08a';X.lineWidth=2;X.stroke();
-    }
-    X.font='14px serif';X.textAlign='center';X.textBaseline='middle';X.fillText(m.icon,sx,sY);
-    txt(m.name,sx,sY+26,10,m.active?'#fff':m.done?'#7dde92':'#666');
+    X.beginPath();X.arc(sx,sY,13,0,Math.PI*2);X.fillStyle=cc;X.fill();
+    if(i===activeIdx&&!m.done&&!m.active){X.strokeStyle='#ffd08a';X.lineWidth=2;X.stroke();}
+    X.font='12px serif';X.textAlign='center';X.textBaseline='middle';X.fillText(m.icon,sx,sY);
   });
 
-  // Bottom
-  X.fillStyle='rgba(10,10,24,0.92)';X.fillRect(0,H-50,W,50);
-  X.strokeStyle='#333';X.beginPath();X.moveTo(0,H-50);X.lineTo(W,H-50);X.stroke();
-  txt(msg,W/2,H-25,14,'#ccc');
+  // Bottom bar
+  X.fillStyle='rgba(10,10,24,0.95)';X.fillRect(0,H-L.botBar,W,L.botBar);
+  txt(msg,W/2,H-L.botBar/2,Math.min(14,W*0.025),'#ccc');
 
-  const allA=machines.slice(0,7).every(m=>m.active);
-  if(allA){const p=Math.sin(gameTime*6)*0.2+0.8;X.globalAlpha=p;txt('🔥 COMBO — All machines running! +5x',W/2,H-72,16,'#ffd08a');X.globalAlpha=1;}
+  // Scroll hint
+  if(!isMobile){
+    txt('← scroll →',W/2,L.topBar+L.stepBar+15,11,'#444');
+  }
 }
 
 function drawMenu(){
+  const L=getLayout();
   drawBG();
-  frr(W/2-280,160,560,340,24,'rgba(10,10,24,0.95)');
-  srr(W/2-280,160,560,340,24,'#c47a2c',3);
-  txt('🍺 Igloo Brewery',W/2,230,40,'#ffd08a');
-  txt('Interactive Brew Game',W/2,280,22,'#aaa');
-  frr(W/2-100,330,200,55,12,'#c47a2c');
-  txt('▶ PLAY',W/2,358,24,'#fff');
-  txt('Manage the brewery supply chain!',W/2,420,15,'#777');
-  txt('Keep all machines running to brew beer.',W/2,445,13,'#555');
+  const cw=Math.min(500,W*0.85),ch=Math.min(320,H*0.45);
+  frr(W/2-cw/2,H*0.2,cw,ch,20,'rgba(10,10,24,0.95)');
+  srr(W/2-cw/2,H*0.2,cw,ch,20,'#c47a2c',3);
+  txt('🍺 Igloo Brewery',W/2,H*0.28,Math.min(36,W*0.06),'#ffd08a');
+  txt('Interactive Brew Game',W/2,H*0.34,Math.min(20,W*0.035),'#aaa');
+  const bw=180,bh=50;
+  frr(W/2-bw/2,H*0.44,bw,bh,12,'#c47a2c');
+  txt('▶ PLAY',W/2,H*0.44+bh/2,22,'#fff');
+  txt('Manage the brewery supply chain!',W/2,H*0.58,Math.min(14,W*0.025),'#777');
+  txt('Keep all machines running to brew beer.',W/2,H*0.62,Math.min(12,W*0.02),'#555');
 }
 
 function drawResult(){
+  const L=getLayout();
   drawBG();
-  frr(W/2-280,130,560,400,24,'rgba(10,10,24,0.95)');
-  srr(W/2-280,130,560,400,24,'#c47a2c',3);
-  txt("⏱️ Time's Up!",W/2,200,36,'#ffd08a');
-  txt(score.toFixed(0)+' L',W/2,270,56,'#1A9900');
-  txt(Math.floor(score/50)+' kegs produced',W/2,325,20,'#aaa');
-  frr(W/2-100,375,200,55,12,'#c47a2c');
-  txt('🔄 BREW AGAIN',W/2,403,22,'#fff');
+  const cw=Math.min(500,W*0.85),ch=Math.min(360,H*0.5);
+  frr(W/2-cw/2,H*0.15,cw,ch,20,'rgba(10,10,24,0.95)');
+  srr(W/2-cw/2,H*0.15,cw,ch,20,'#c47a2c',3);
+  txt("⏱️ Time's Up!",W/2,H*0.22,Math.min(32,W*0.05),'#ffd08a');
+  txt(score.toFixed(0)+' L',W/2,H*0.35,Math.min(52,W*0.08),'#1A9900');
+  txt(Math.floor(score/50)+' kegs produced',W/2,H*0.42,Math.min(18,W*0.03),'#aaa');
+  const bw=200,bh=50;
+  frr(W/2-bw/2,H*0.55,bw,bh,12,'#c47a2c');
+  txt('🔄 BREW AGAIN',W/2,H*0.55+bh/2,22,'#fff');
 }
 
 // ─── UPDATE ───
 function update(dt){
   if(state!=='game')return;
-  gameTime+=dt;
+  gt+=dt;
   timerAcc+=dt;
   if(timerAcc>=1){timeLeft--;timerAcc-=1;if(timeLeft<=0){state='result';return;}}
-  scrollX=lerp(scrollX,targetScrollX,0.1);
+  scrollX=lerp(scrollX,tScrollX,0.12);
 
-  // Chain: each machine processes when active, then marks done
   machines.forEach((m,i)=>{
-    const prev=i>0?machines[i-1]:null;
-
-    // Machine activates when player interacts AND prev is done (or is first)
-    // When active, process counts down. When process hits 0, machine is "done"
-    // Next machine can then activate.
-
     if(m.active){
-      // Process countdown
-      let speed = 10 + i*2;
-      m.process -= dt * speed;
-      m.fill = clamp(m.process, 0, 100);
-      m.shakeX = Math.sin(gameTime*30)*1.5;
-
-      if(m.process <= 0){
-        m.process = 0;
-        m.active = false;
-        m.done = true;
-        m.leverPulled = false;
-        m.toggleL = false; m.toggleR = false;
-        m.holding = false; m.holdPower = 0;
-        m.fill = 0;
-        m.shakeX = 0;
-        score += 15;
-        activeIdx = Math.min(i + 1, machines.length - 1);
-        msg = `✅ ${m.name} done! Next: ${machines[activeIdx].icon} ${machines[activeIdx].name}`;
-        // Particles
-        for(let j=0;j<15;j++){
-          particles.push({x:m.x-scrollX+rnd(-40,40),y:370+rnd(-50,0),vx:rnd(-100,100),vy:rnd(-150,-40),life:rnd(0.4,1),color:m.color});
-        }
+      let speed=10+i*2;
+      m.process-=dt*speed;
+      m.fill=clamp(m.process,0,100);
+      m.shake=Math.sin(gt*30)*1.2;
+      if(m.process<=0){
+        m.process=0;m.active=false;m.done=true;
+        m.lever=false;m.togL=false;m.togR=false;m.holding=false;m.hold=0;m.fill=0;m.shake=0;
+        score+=15;
+        activeIdx=Math.min(i+1,machines.length-1);
+        msg='✅ '+m.name+' done! → '+machines[activeIdx].icon+' '+machines[activeIdx].name;
+        for(let j=0;j<12;j++) particles.push({x:L.startX+m.idx*L.spacing-scrollX+rnd(-30,30),y:L.machineY+rnd(-40,0),vx:rnd(-80,80),vy:rnd(-120,-30),life:rnd(0.4,0.9),color:m.color});
       }
     }
-
-    // Grain fall for silo
-    if(m.id==='silo'&&m.leverPulled&&m.active){
-      if(Math.random()<0.4) m.grainFall.push({x:rnd(-25,25),y:300});
-    }
-    m.grainFall=m.grainFall.filter(p=>{p.y+=dt*140;return p.y<440;});
+    if(m.id==='silo'&&m.lever&&m.active&&Math.random()<0.4) m.grain.push({x:rnd(-20,20),y:280});
+    m.grain=m.grain.filter(p=>{p.y+=dt*130;return p.y<420;});
   });
 
-  // Combo
-  const allA=machines.slice(0,7).every(m=>m.active);
-  if(allA){/* combo score handled in activate */}
-
-  displayScore=lerp(displayScore,score,0.1);
-
-  particles=particles.filter(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=250*dt;p.life-=dt;return p.life>0;});
+  dispScore=lerp(dispScore,score,0.1);
+  particles=particles.filter(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=200*dt;p.life-=dt;return p.life>0;});
 }
 
-function activateMachine(i){
+function activate(i){
   const m=machines[i];
   const prev=i>0?machines[i-1]:null;
   if(m.active||m.depleted)return;
-  if(prev&&!prev.done&&i!==0)return; // chain not ready
-
-  m.active=true;
-  m.done=false;
-  m.process=100;
-  m.fill=100;
-
-  if(m.ctrl==='lever')m.leverPulled=true;
-  if(m.ctrl==='hold'){m.holding=true;m.holdPower=0;}
-  if(m.ctrl==='dual'){m.toggleBalance=0.5;if(m.x%200<100)m.toggleL=true;else m.toggleR=true;}
-
-  if(i===0)msg=`${m.icon} Silo filling! Grain flowing to Milling...`;
-  else msg=`${m.icon} ${m.name} activated!`;
-
-  // Particles
-  for(let j=0;j<10;j++){
-    particles.push({x:m.x-scrollX+rnd(-30,30),y:370+rnd(-40,0),vx:rnd(-80,80),vy:rnd(-120,-30),life:rnd(0.3,0.7),color:m.color});
-  }
+  if(prev&&!prev.done&&i!==0)return;
+  m.active=true;m.done=false;m.process=100;m.fill=100;
+  if(m.ctrl==='lever')m.lever=true;
+  if(m.ctrl==='dual'){m.bal=0.5;if(Math.random()>0.5)m.togL=true;else m.togR=true;}
+  msg=m.icon+' '+m.name+' activated!';
+  for(let j=0;j<8;j++) particles.push({x:L.startX+m.idx*L.spacing-scrollX+rnd(-20,20),y:L.machineY+rnd(-30,0),vx:rnd(-60,60),vy:rnd(-100,-20),life:rnd(0.3,0.6),color:m.color});
 }
 
 // ─── RENDER ───
 function render(){
+  const L=getLayout();
   X.clearRect(0,0,W,H);
   if(state==='menu'){drawMenu();return;}
   if(state==='result'){drawResult();return;}
-  drawBG();drawPipes();
-  machines.forEach(m=>drawMachine(m));
-  particles.forEach(p=>{X.globalAlpha=clamp(p.life*2,0,1);X.beginPath();X.arc(p.x,p.y,5,0,Math.PI*2);X.fillStyle=p.color;X.fill();X.globalAlpha=1;});
-  drawUI();
+  drawBG();drawPipes(L);
+  machines.forEach(m=>drawMachine(m,L));
+  machines.forEach(m=>drawControl(m,L));
+  particles.forEach(p=>{X.globalAlpha=clamp(p.life*2,0,1);X.beginPath();X.arc(p.x,p.y,4,0,Math.PI*2);X.fillStyle=p.color;X.fill();X.globalAlpha=1;});
+  drawUI(L);
 }
 
 // ─── INPUT ───
-function getXY(e){
-  const r=C.getBoundingClientRect();
-  return{x:(e.clientX-r.left)/scale,y:(e.clientY-r.top)/scale};
-}
-
-function handleDown(px,py){
+function handleTap(px,py){
+  const L=getLayout();
   if(state==='menu'){
-    if(px>W/2-100&&px<W/2+100&&py>330&&py<385){state='game';initMachines();}
+    const bw=180,bh=50;
+    if(px>W/2-bw/2&&px<W/2+bw/2&&py>H*0.44&&py<H*0.44+bh){state='game';init();}
     return;
   }
   if(state==='result'){
-    if(px>W/2-100&&px<W/2+100&&py>375&&py<430){state='menu';}
+    const bw=200,bh=50;
+    if(px>W/2-bw/2&&px<W/2+bw/2&&py>H*0.55&&py<H*0.55+bh){state='menu';}
     return;
   }
 
-  // Scroll zones
-  if(px<60){targetScrollX=Math.min(0,targetScrollX+300);return;}
-  if(px>W-60){targetScrollX=Math.max(-(GAME_W-W),targetScrollX-300);return;}
-
-  // Machine controls
+  // Machine or control click
   machines.forEach((m,i)=>{
-    const sx=m.x-scrollX,my=370;
-    const cy=my+130/2+55;
-    if(px>sx-70&&px<sx+70&&py>my-100&&py<my+130){
+    const sx=L.startX+i*L.spacing-scrollX;
+    const my=L.machineY,cy=L.controlY;
+    const hitR=L.machineSize*0.7;
+
+    // Click on machine or control area
+    if(px>sx-hitR&&px<sx+hitR&&py>my-hitR&&py<cy+L.ctrlSize*0.6){
       if(m.ctrl==='lever'){
         if(!m.active&&!m.depleted){
           const prev=i>0?machines[i-1]:null;
-          if(!prev||prev.done||i===0){activateMachine(i);msg=`${m.icon} Lever pulled! ${m.name} filling...`;}
-          else{msg=`⏳ Wait for ${prev.icon} ${prev.name} to finish first!`;}
+          if(!prev||prev.done||i===0){activate(i);}
+          else{msg='⏳ Wait for '+prev.icon+' '+prev.name+' first!';}
         }else if(m.active){
-          m.leverPulled=false;m.active=false;m.done=true;m.process=0;m.fill=0;
-          activeIdx=i;msg=`${m.icon} ${m.name} stopped. Pull lever to restart.`;
+          m.lever=false;m.active=false;m.done=true;m.process=0;m.fill=0;
+          activeIdx=i;msg=m.icon+' '+m.name+' stopped.';
         }
       }else if(m.ctrl==='hold'){
         if(!m.active&&!m.depleted){
           const prev=i>0?machines[i-1]:null;
-          if(!prev||prev.done||i===0){m.holding=true;activateMachine(i);msg=`Holding ${m.icon} ${m.name} power...`;}
-          else{msg=`⏳ Wait for ${prev.icon} ${prev.name} to finish first!`;}
-        }
+          if(!prev||prev.done||i===0){m.holding=true;activate(i);}
+          else{msg='⏳ Wait for '+prev.icon+' '+prev.name+' first!';}
+        }else if(m.active){m.holding=true;}
       }else if(m.ctrl==='dual'){
         if(!m.active&&!m.depleted){
           const prev=i>0?machines[i-1]:null;
           if(!prev||prev.done||i===0){
-            if(px<sx){m.toggleL=true;m.toggleR=false;}else{m.toggleR=true;m.toggleL=false;}
-            activateMachine(i);msg=`${m.icon} ${m.name} toggled!`;
-          }else{msg=`⏳ Wait for ${prev.icon} ${prev.name} to finish first!`;}
+            if(px<sx){m.togL=true;m.togR=false;}else{m.togR=true;m.togL=false;}
+            activate(i);
+          }else{msg='⏳ Wait for '+prev.icon+' '+prev.name+' first!';}
         }else if(m.active){
-          // Adjust balance while active
-          if(px<sx){m.toggleBalance=Math.max(0,m.toggleBalance-0.15);m.toggleL=true;setTimeout(()=>m.toggleL=false,200);}
-          else{m.toggleBalance=Math.min(1,m.toggleBalance+0.15);m.toggleR=true;setTimeout(()=>m.toggleR=false,200);}
+          if(px<sx){m.bal=Math.max(0,m.bal-0.15);m.togL=true;setTimeout(()=>{if(machines[i])machines[i].togL=false;},200);}
+          else{m.bal=Math.min(1,m.bal+0.15);m.togR=true;setTimeout(()=>{if(machines[i])machines[i].togR=false;},200);}
         }
       }
     }
   });
 }
 
-function handleUp(){
-  machines.forEach(m=>{
-    if(m.ctrl==='hold'&&!m.holding){
-      // Stop if released
-    }
-  });
-}
-
-C.addEventListener('mousedown',e=>{const p=getXY(e);handleDown(p.x,p.y);});
-C.addEventListener('mouseup',()=>{handleUp();});
-C.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];const r=C.getBoundingClientRect();handleDown((t.clientX-r.left)/scale,(t.clientY-r.top)/scale);C._tx=t.clientX;C._tsx=targetScrollX;},{passive:false});
-C.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];targetScrollX=clamp(C._tsx+(t.clientX-C._tx)*0.8,-(GAME_W-W),0);},{passive:false});
-C.addEventListener('touchend',()=>{handleUp();});
+C.addEventListener('mousedown',e=>{const r=C.getBoundingClientRect();handleTap(e.clientX-r.left,e.clientY-r.top);});
+C.addEventListener('mouseup',()=>{machines.forEach(m=>{if(m.ctrl==='hold')m.holding=false;});});
+C.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];handleTap(t.clientX-C.getBoundingClientRect().left,t.clientY-C.getBoundingClientRect().top);touchSX=t.clientX;touchSSX=tScrollX;},{passive:false});
+C.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];tScrollX=clamp(touchSSX+(t.clientX-touchSX),-(GAME_W-W),0);},{passive:false});
+C.addEventListener('touchend',()=>{machines.forEach(m=>{if(m.ctrl==='hold')m.holding=false;});});
 
 let lastT=0;
 function loop(t){const dt=Math.min((t-lastT)/1000,0.05);lastT=t;update(dt);render();requestAnimationFrame(loop);}
-initMachines();requestAnimationFrame(loop);
+init();requestAnimationFrame(loop);
 </script>
 </body>
 </html>
