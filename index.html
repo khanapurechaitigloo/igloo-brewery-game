@@ -40,7 +40,7 @@ const MACHINES=[
 let state='menu',score=0,dispScore=0,timeLeft=180,timerAcc=0;
 let scrollX=0,tScrollX=0,touchSX=0,touchSSX=0;
 let machines=[],particles=[],gt=0,activeIdx=0;
-let msg='Pull 🌾 Silo lever to start!';
+let msg='Pull Silo lever to start!';let L=getLayout();
 let isMobile='ontouchstart'in window;
 
 function init(){
@@ -280,6 +280,7 @@ function drawResult(){
 // ─── UPDATE ───
 function update(dt){
   if(state!=='game')return;
+  L=getLayout();
   gt+=dt;
   timerAcc+=dt;
   if(timerAcc>=1){timeLeft--;timerAcc-=1;if(timeLeft<=0){state='result';return;}}
