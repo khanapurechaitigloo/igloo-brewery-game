@@ -24,115 +24,87 @@ function resize(){
 }
 resize();addEventListener('resize',resize);
 
-// ─── GAME CONFIG ───
-const GAME_W=2800;
-const TIMER=180;
+const GAME_W=3200;
+
 const MACHINES=[
-  {id:'silo',name:'Malt Silo',icon:'🌾',color:'#F7B747',ctrl:'lever',x:180},
-  {id:'mill',name:'Milling',icon:'⚙️',color:'#c47a2c',ctrl:'hold',x:460},
-  {id:'mash',name:'Mashing',icon:'💧',color:'#39959E',ctrl:'dual',x:740},
-  {id:'lauter',name:'Lautering',icon:'🔪',color:'#E2A440',ctrl:'dual',x:1020},
-  {id:'boil',name:'Boiling',icon:'🔥',color:'#E24422',ctrl:'hold',x:1300},
-  {id:'cool',name:'Cooling',icon:'❄️',color:'#5599CC',ctrl:'dual',x:1580},
-  {id:'ferment',name:'Fermentation',icon:'🫧',color:'#88AA44',ctrl:'lever',x:1860},
-  {id:'filter',name:'Filtration',icon:'🔬',color:'#999999',ctrl:'lever',x:2140},
-  {id:'package',name:'Packaging',icon:'🍺',color:'#AA8833',ctrl:'lever',x:2420},
+  {id:'silo',name:'Malt Silo',icon:'🌾',color:'#F7B747',ctrl:'lever',x:200},
+  {id:'mill',name:'Milling',icon:'⚙️',color:'#c47a2c',ctrl:'hold',x:520},
+  {id:'mash',name:'Mashing',icon:'💧',color:'#39959E',ctrl:'dual',x:840},
+  {id:'lauter',name:'Lautering',icon:'🔪',color:'#E2A440',ctrl:'dual',x:1160},
+  {id:'boil',name:'Boiling',icon:'🔥',color:'#E24422',ctrl:'hold',x:1480},
+  {id:'cool',name:'Cooling',icon:'❄️',color:'#5599CC',ctrl:'dual',x:1800},
+  {id:'ferment',name:'Fermentation',icon:'🫧',color:'#88AA44',ctrl:'lever',x:2120},
+  {id:'filter',name:'Filtration',icon:'🔬',color:'#999999',ctrl:'lever',x:2440},
+  {id:'package',name:'Packaging',icon:'🍺',color:'#AA8833',ctrl:'lever',x:2760},
 ];
 
-// ─── STATE ───
 let state='menu';
-let score=0,displayScore=0,timeLeft=TIMER,timerAcc=0;
+let score=0,displayScore=0,timeLeft=180,timerAcc=0;
 let scrollX=0,targetScrollX=0;
-let machines=[];
-let particles=[];
-let comboTimer=0;
-let msg='Click 🌾 Malt Silo to start!';
-let gameTime=0;
+let machines=[],particles=[],gameTime=0;
+let msg='Pull the lever on 🌾 Malt Silo to start!';
+let activeIdx=0; // which machine player should work on next
 
 function initMachines(){
   machines=MACHINES.map((m,i)=>({
     ...m,idx:i,
-    fill:0,maxFill:100,
-    process:0,processSpeed:0,
+    fill:0,process:0,
     active:false,done:false,
-    prevActive:false,
     leverPulled:false,
     holdPower:0,holding:false,
-    toggleL:false,toggleR:false,
-    toggleBalance:0.5,
+    toggleL:false,toggleR:false,toggleBalance:0.5,
     depleted:false,
-    alertTimer:0,
     grainFall:[],
-    outputFall:[],
+    shakeX:0,
   }));
-  score=0;displayScore=0;timeLeft=TIMER;timerAcc=0;
-  comboTimer=0;scrollX=0;targetScrollX=0;
-  particles=[];msg='Click 🌾 Malt Silo to start!';gameTime=0;
+  score=0;displayScore=0;timeLeft=180;timerAcc=0;
+  scrollX=0;targetScrollX=0;particles=[];gameTime=0;activeIdx=0;
+  msg='Pull the lever on 🌾 Malt Silo to start!';
 }
 
 // ─── HELPERS ───
 function lerp(a,b,t){return a+(b-a)*t}
-function clamp(v,mn,mx){return Math.max(mn,Math.min(mx,v))}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function rnd(a,b){return a+Math.random()*(b-a)}
+function lighten(hex,n){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return '#'+[Math.min(255,r+n),Math.min(255,g+n),Math.min(255,b+n)].map(c=>c.toString(16).padStart(2,'0')).join('');}
 
-function roundRect(x,y,w,h,r){
-  X.beginPath();X.moveTo(x+r,y);X.lineTo(x+w-r,y);
-  X.quadraticCurveTo(x+w,y,x+w,y+r);X.lineTo(x+w,y+h-r);
-  X.quadraticCurveTo(x+w,y+h,x+w-r,y+h);X.lineTo(x+r,y+h);
-  X.quadraticCurveTo(x,y+h,x,y+h-r);X.lineTo(x,y+r);
-  X.quadraticCurveTo(x,y,x+r,y);X.closePath();
-}
+function rr(x,y,w,h,r){X.beginPath();X.moveTo(x+r,y);X.lineTo(x+w-r,y);X.quadraticCurveTo(x+w,y,x+w,y+r);X.lineTo(x+w,y+h-r);X.quadraticCurveTo(x+w,y+h,x+w-r,y+h);X.lineTo(x+r,y+h);X.quadraticCurveTo(x,y+h,x,y+h-r);X.lineTo(x,y+r);X.quadraticCurveTo(x,y,x+r,y);X.closePath();}
+function frr(x,y,w,h,r,c){rr(x,y,w,h,r);X.fillStyle=c;X.fill();}
+function srr(x,y,w,h,r,c,lw){rr(x,y,w,h,r);X.strokeStyle=c;X.lineWidth=lw||2;X.stroke();}
+function txt(s,x,y,sz,c,a){X.font='bold ${sz}px "Segoe UI",system-ui,sans-serif';X.fillStyle=c||'#cdb18a';X.textAlign=a||'center';X.textBaseline='middle';X.fillText(s,x,y);}
 
-function fillRR(x,y,w,h,r,col){roundRect(x,y,w,h,r);X.fillStyle=col;X.fill()}
-function strokeRR(x,y,w,h,r,col,lw){roundRect(x,y,w,h,r);X.strokeStyle=col;X.lineWidth=lw||2;X.stroke()}
-
-function txt(s,x,y,sz,col,al){X.font=`bold ${sz}px "Segoe UI",system-ui,sans-serif`;X.fillStyle=col||'#cdb18a';X.textAlign=al||'center';X.textBaseline='middle';X.fillText(s,x,y)}
-
-// ─── DRAW BACKGROUND ───
+// ─── BACKGROUND ───
 function drawBG(){
-  // Sky
   const sg=X.createLinearGradient(0,0,0,H);
   sg.addColorStop(0,'#0a0a18');sg.addColorStop(0.5,'#151528');sg.addColorStop(1,'#1e1e36');
   X.fillStyle=sg;X.fillRect(0,0,W,H);
 
-  // Back buildings (parallax 0.3)
   const b1=(scrollX*0.3)%250;
   X.fillStyle='#1a1a30';
   for(let i=-1;i<16;i++){
-    const bx=i*250-b1;
-    X.fillRect(bx,80,200,420);
+    const bx=i*250-b1;X.fillRect(bx,80,200,420);
     for(let j=0;j<5;j++){
       X.fillStyle='#222244';X.fillRect(bx+20,110+j*75,35,30);
       X.fillStyle='#2a2a50';X.fillRect(bx+70,110+j*75,35,30);
       X.fillStyle='#1e1e40';X.fillRect(bx+120,110+j*75,35,30);
-      X.fillStyle='#1a1a30';X.fillRect(bx+170,110+j*75,35,30);
+      X.fillStyle='#1a1a30';
     }
-    X.fillStyle='#1a1a30';
   }
-
-  // Mid buildings (parallax 0.6)
   const b2=(scrollX*0.6)%350;
   X.fillStyle='#20203a';
   for(let i=-1;i<12;i++){
-    const bx=i*350-b2;
-    X.fillRect(bx,160,280,360);
-    // Pipes
+    const bx=i*350-b2;X.fillRect(bx,160,280,360);
     X.fillStyle='#2a2a48';X.fillRect(bx+10,200,260,5);X.fillRect(bx+10,320,260,5);
     X.fillStyle='#20203a';
   }
 
-  // Floor
   const fg=X.createLinearGradient(0,530,0,H);
   fg.addColorStop(0,'#252544');fg.addColorStop(1,'#1a1a32');
   X.fillStyle=fg;X.fillRect(0,530,W,H-530);
-
-  // Floor tiles
   X.strokeStyle='#2a2a48';X.lineWidth=1;
   const ft=(scrollX)%80;
   for(let i=-1;i<20;i++){X.beginPath();X.moveTo(i*80-ft,530);X.lineTo(i*80-ft,H);X.stroke();}
-  for(let j=0;j<4;j++){X.beginPath();X.moveTo(0,530+j*60);X.lineTo(W,530+j*60);X.stroke();}
 
-  // Hanging lights
   const lo=(scrollX*0.8)%200;
   for(let i=-1;i<10;i++){
     const lx=i*200+100-lo;
@@ -147,305 +119,284 @@ function drawBG(){
 // ─── DRAW MACHINE ───
 function drawMachine(m){
   const sx=m.x-scrollX;
-  if(sx<-180||sx>W+180)return;
-  const mx=sx,my=350,mw=110,mh=160;
+  if(sx<-200||sx>W+200)return;
+  const mx=sx+(m.shakeX||0),my=370,mw=130,mh=180;
 
   // Shadow
   X.fillStyle='rgba(0,0,0,0.25)';
-  X.beginPath();X.ellipse(mx,my+mh/2+25,mw/2+5,10,0,0,Math.PI*2);X.fill();
+  X.beginPath();X.ellipse(mx,my+mh/2+28,mw/2+8,12,0,0,Math.PI*2);X.fill();
 
   // Machine body
-  const active=m.active;
-  const bodyGrad=X.createLinearGradient(mx-mw/2,my-mh/2,mx+mw/2,my+mh/2);
-  bodyGrad.addColorStop(0,active?lighten(m.color,40):'#4a4a5a');
-  bodyGrad.addColorStop(1,active?m.color:'#333344');
-  fillRR(mx-mw/2,my-mh/2,mw,mh,8,bodyGrad);
-  strokeRR(mx-mw/2,my-mh/2,mw,mh,8,active?'#ffd08a':'#555566',2.5);
+  const bg=X.createLinearGradient(mx-mw/2,my-mh/2,mx+mw/2,my+mh/2);
+  bg.addColorStop(0,m.active?lighten(m.color,50):'#4a4a5a');
+  bg.addColorStop(1,m.active?m.color:'#333344');
+  frr(mx-mw/2,my-mh/2,mw,mh,10,bg);
+  srr(mx-mw/2,my-mh/2,mw,mh,10,m.active?'#ffd08a':m.done?'#7dde92':'#555566',3);
 
-  // Fill level (liquid inside machine)
+  // Fill level
   if(m.fill>0){
-    const fillPx=(mh-16)*(m.fill/m.maxFill);
-    X.save();
-    X.beginPath();X.rect(mx-mw/2+4,my-mh/2+4,mw-8,mh-8);X.clip();
-    X.fillStyle=m.color+'99';
-    fillRR(mx-mw/2+4,my+mh/2-4-fillPx,mw-8,fillPx,0,m.color+'99');
+    const fH=(mh-20)*(m.fill/100);
+    X.save();X.beginPath();X.rect(mx-mw/2+5,my-mh/2+5,mw-10,mh-10);X.clip();
+    frr(mx-mw/2+5,my+mh/2-5-fH,mw-10,fH,0,m.color+'88');
     X.restore();
   }
 
-  // Icon
-  X.font='32px serif';X.textAlign='center';X.textBaseline='middle';
-  X.fillText(m.icon,mx,my-15);
+  // Icon (bigger)
+  X.font='40px serif';X.textAlign='center';X.textBaseline='middle';
+  X.fillText(m.icon,mx,my-12);
 
-  // Process bar (inside machine)
+  // Process bar inside machine
+  const bw=mw-20,bh=8,bx=mx-bw/2,by=my+mh/2-18;
+  frr(bx,by,bw,bh,4,'#1a1a2a');
   if(m.process>0){
-    const bw=mw-16,bh=6,bx=mx-bw/2,by=my+mh/2-14;
-    fillRR(bx,by,bw,bh,3,'#222');
-    fillRR(bx,by,bw*(m.process/100),bh,3,m.active?'#1A9900':'#cc2800');
+    frr(bx,by,bw*(m.process/100),bh,4,m.active?'#1A9900':'#cc2800');
   }
 
   // Status light
-  const lightY=my-mh/2-18;
+  const ly=my-mh/2-22;
   if(m.depleted&&!m.active){
     const p=Math.sin(gameTime*5)*0.3+0.7;
-    X.globalAlpha=p;X.beginPath();X.arc(mx,lightY,7,0,Math.PI*2);X.fillStyle='#cc2800';X.fill();X.globalAlpha=1;
+    X.globalAlpha=p;X.beginPath();X.arc(mx,ly,9,0,Math.PI*2);X.fillStyle='#cc2800';X.fill();X.globalAlpha=1;
   }else if(m.active){
-    X.shadowColor='#1A9900';X.shadowBlur=12;
-    X.beginPath();X.arc(mx,lightY,7,0,Math.PI*2);X.fillStyle='#1A9900';X.fill();
+    X.shadowColor='#1A9900';X.shadowBlur=15;
+    X.beginPath();X.arc(mx,ly,9,0,Math.PI*2);X.fillStyle='#1A9900';X.fill();
     X.shadowBlur=0;
+  }else if(m.done){
+    X.beginPath();X.arc(mx,ly,9,0,Math.PI*2);X.fillStyle='#7dde92';X.fill();
   }
 
-  // Controls
-  const cy=my+mh/2+45;
+  // ─── CONTROLS (bigger!) ───
+  const cy=my+mh/2+55;
+  const isActiveMachine = m.idx === activeIdx;
+
   if(m.ctrl==='lever'){
-    fillRR(mx-10,cy-22,20,44,4,'#333');strokeRR(mx-10,cy-22,20,44,4,'#666',1.5);
-    const ly=m.leverPulled?cy+12:cy-18;
-    fillRR(mx-14,ly,28,12,4,m.leverPulled?'#4a9eff':'#888');
-    txt('LEVER',mx,cy+35,9,'#666');
+    // Big lever
+    const lw=30,lh=55;
+    frr(mx-lw/2,cy-lh/2,lw,lh,6,'#2a2a3a');
+    srr(mx-lw/2,cy-lh/2,lw,lh,6,m.leverPulled?'#4a9eff':'#666',2);
+    const knobY=m.leverPulled?cy+15:cy-18;
+    frr(mx-18,knobY,36,16,6,m.leverPulled?'#4a9eff':'#aaa');
+    // Glow if active machine
+    if(isActiveMachine&&!m.leverPulled){
+      X.shadowColor='#ffd08a';X.shadowBlur=15+Math.sin(gameTime*4)*8;
+      srr(mx-lw/2-3,cy-lh/2-3,lw+6,lh+6,8,'#ffd08a',2);
+      X.shadowBlur=0;
+    }
+    txt('PULL',mx,cy+lh/2+16,12,'#888');
   }else if(m.ctrl==='hold'){
-    const pr=18;
-    X.beginPath();X.arc(mx,cy,pr+3,0,Math.PI*2);X.fillStyle='#333';X.fill();
-    X.strokeStyle='#666';X.lineWidth=2;X.stroke();
+    // Big power button
+    const pr=28;
+    X.beginPath();X.arc(mx,cy,pr+4,0,Math.PI*2);X.fillStyle='#2a2a3a';X.fill();
+    X.strokeStyle='#666';X.lineWidth=3;X.stroke();
     X.beginPath();X.arc(mx,cy,pr,0,Math.PI*2);
     X.fillStyle=m.holding?'#ff6644':'#555';X.fill();
-    // Power icon
-    X.strokeStyle='#fff';X.lineWidth=2.5;X.beginPath();
-    X.moveTo(mx+2,cy-9);X.lineTo(mx-2,cy-1);X.lineTo(mx+4,cy-1);
-    X.lineTo(mx-2,cy+9);X.lineTo(mx+1,cy+1);X.lineTo(mx-3,cy+1);X.stroke();
-    txt('HOLD',mx,cy+32,9,'#666');
+    // Power bolt
+    X.strokeStyle='#fff';X.lineWidth=3;X.beginPath();
+    X.moveTo(mx+3,cy-12);X.lineTo(mx-3,cy);X.lineTo(mx+5,cy);
+    X.lineTo(mx-3,cy+12);X.lineTo(mx+1,cy+1);X.lineTo(mx-4,cy+1);X.stroke();
+    // Charge bar
+    if(m.holding||m.holdPower>0){
+      frr(mx-30,cy+pr+8,60,8,4,'#1a1a2a');
+      frr(mx-30,cy+pr+8,60*(m.holdPower/100),8,4,'#ff6644');
+    }
+    if(isActiveMachine&&!m.holding){
+      X.shadowColor='#ffd08a';X.shadowBlur=15+Math.sin(gameTime*4)*8;
+      X.beginPath();X.arc(mx,cy,pr+4,0,Math.PI*2);X.strokeStyle='#ffd08a';X.lineWidth=2;X.stroke();
+      X.shadowBlur=0;
+    }
+    txt('HOLD',mx,cy+pr+30,12,'#888');
   }else if(m.ctrl==='dual'){
-    // Left toggle
-    fillRR(mx-32,cy-10,26,20,4,m.toggleL?'#4a9eff':'#333');strokeRR(mx-32,cy-10,26,20,4,'#666',1.5);
-    txt('◀',mx-19,cy,12,m.toggleL?'#fff':'#666');
-    // Right toggle
-    fillRR(mx+6,cy-10,26,20,4,m.toggleR?'#4a9eff':'#333');strokeRR(mx+6,cy-10,26,20,4,'#666',1.5);
-    txt('▶',mx+19,cy,12,m.toggleR?'#fff':'#666');
-    // Balance indicator
-    const balX=mx-10+20*m.toggleBalance;
-    fillRR(mx-10,cy+14,20,4,2,'#222');
-    X.beginPath();X.arc(balX,cy+16,4,0,Math.PI*2);X.fillStyle='#ffd08a';X.fill();
-    txt('ADJUST',mx,cy+32,9,'#666');
+    // Big toggle buttons
+    const tw=44,th=36;
+    // Left
+    frr(mx-50,cy-th/2,tw,th,8,m.toggleL?'#4a9eff':'#333');
+    srr(mx-50,cy-th/2,tw,th,8,m.toggleL?'#6ac0ff':'#666',2);
+    txt('◀',mx-28,cy,20,m.toggleL?'#fff':'#888');
+    // Right
+    frr(mx+6,cy-th/2,tw,th,8,m.toggleR?'#4a9eff':'#333');
+    srr(mx+6,cy-th/2,tw,th,8,m.toggleR?'#6ac0ff':'#666',2);
+    txt('▶',mx+28,cy,20,m.toggleR?'#fff':'#888');
+    // Balance bar
+    frr(mx-35,cy+th/2+8,70,10,5,'#1a1a2a');
+    const balX=mx-35+70*m.toggleBalance;
+    frr(balX-6,cy+th/2+6,12,14,7,m.toggleBalance>0.35&&m.toggleBalance<0.65?'#1A9900':'#ffd08a');
+    if(isActiveMachine&&!m.toggleL&&!m.toggleR){
+      X.shadowColor='#ffd08a';X.shadowBlur=15+Math.sin(gameTime*4)*8;
+      srr(mx-55,cy-th/2-3,110,th+6,10,'#ffd08a',2);
+      X.shadowBlur=0;
+    }
+    txt('ADJUST',mx,cy+th/2+30,11,'#888');
   }
 
   // Name
-  txt(m.name,mx,my-mh/2-38,12,'#999');
+  txt(m.name,mx,my-mh/2-42,14,isActiveMachine?'#ffd08a':'#888');
 
-  // Falling grain particles
+  // Grain fall
   m.grainFall.forEach(p=>{
-    X.globalAlpha=0.8;
-    X.beginPath();X.arc(sx+p.x,p.y,3,0,Math.PI*2);X.fillStyle=m.color;X.fill();
+    X.globalAlpha=0.9;
+    X.beginPath();X.arc(sx+p.x,p.y,4,0,Math.PI*2);X.fillStyle=m.color;X.fill();
     X.globalAlpha=1;
   });
 }
 
-function lighten(hex,amt){
-  let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
-  r=Math.min(255,r+amt);g=Math.min(255,g+amt);b=Math.min(255,b+amt);
-  return '#'+[r,g,b].map(c=>c.toString(16).padStart(2,'0')).join('');
-}
-
-// ─── DRAW PIPES ───
+// ─── PIPES ───
 function drawPipes(){
   for(let i=0;i<machines.length-1;i++){
     const m1=machines[i],m2=machines[i+1];
-    const x1=m1.x-scrollX+55,x2=m2.x-scrollX-55;
-    const y=420;
-    const flowing=m1.active&&m1.process>30;
-    // Pipe body
-    X.fillStyle=flowing?'#446688':'#3a3a55';
-    X.fillRect(x1,y-5,x2-x1,10);
-    // Joints
-    X.fillStyle=flowing?'#557799':'#4a4a66';
-    X.fillRect(x1-3,y-7,10,14);
-    X.fillRect(x2-7,y-7,10,14);
-    // Flow particles
+    const x1=m1.x-scrollX+65,x2=m2.x-scrollX-65,y=440;
+    const flowing=m1.done||m1.active;
+    X.fillStyle=flowing?'#446688':'#333350';
+    X.fillRect(x1,y-6,x2-x1,12);
+    X.fillStyle=flowing?'#557799':'#444466';
+    X.fillRect(x1-4,y-8,12,16);X.fillRect(x2-8,y-8,12,16);
     if(flowing){
       const t=gameTime*1.5+i;
-      for(let j=0;j<6;j++){
-        const fx=x1+((t+j*0.17)%1)*(x2-x1);
-        X.globalAlpha=0.7;X.beginPath();X.arc(fx,y,4,0,Math.PI*2);X.fillStyle='#4a9eff';X.fill();X.globalAlpha=1;
+      for(let j=0;j<8;j++){
+        const fx=x1+((t+j*0.13)%1)*(x2-x1);
+        X.globalAlpha=0.7;X.beginPath();X.arc(fx,y,5,0,Math.PI*2);X.fillStyle='#4a9eff';X.fill();X.globalAlpha=1;
       }
     }
   }
 }
 
-// ─── DRAW TOP BAR ───
-function drawTopBar(){
-  // Header bg
+// ─── UI ───
+function drawUI(){
   X.fillStyle='rgba(10,10,24,0.92)';X.fillRect(0,0,W,58);
   X.strokeStyle='#333';X.lineWidth=1;X.beginPath();X.moveTo(0,58);X.lineTo(W,58);X.stroke();
-
-  // Title
-  txt('🍺 Igloo Brewery — Interactive Brew',260,30,17,'#ffd08a');
-
-  // Score
-  txt(Math.floor(displayScore)+' L',W-190,30,20,'#1A9900','right');
-
-  // Timer
+  txt('🍺 Igloo Brewery',200,30,18,'#ffd08a');
+  txt(displayScore.toFixed(0)+' L',W-190,30,22,'#1A9900','right');
   const m=Math.floor(timeLeft/60),s=Math.floor(timeLeft%60);
-  const ts=m+':'+s.toString().padStart(2,'0');
-  txt(ts,W-60,30,22,timeLeft<30?'#cc2800':'#ff6b6b','right');
+  txt(m+':'+s.toString().padStart(2,'0'),W-60,30,24,timeLeft<30?'#cc2800':'#ff6b6b','right');
 
   // Step indicators
-  const stepY=72,stepW=W/machines.length;
+  const sY=72,sW=W/machines.length;
   machines.forEach((m,i)=>{
-    const sx=stepW*i+stepW/2;
-    // Connection line
+    const sx=sW*i+sW/2;
     if(i<machines.length-1){
-      const nextActive=machines[i].done&&machines[i+1].active;
-      X.strokeStyle=nextActive?'#4a9eff':'#333';X.lineWidth=3;
-      X.beginPath();X.moveTo(sx+16,stepY);X.lineTo(sx+stepW-16,stepY);X.stroke();
+      X.strokeStyle=m.done?'#4a9eff':'#333';X.lineWidth=3;
+      X.beginPath();X.moveTo(sx+18,sY);X.lineTo(sx+sW-18,sY);X.stroke();
     }
-    // Circle
-    const cc=m.active?'#1A9900':m.depleted?'#cc2800':m.done?'#1A9900':'#444';
-    X.beginPath();X.arc(sx,stepY,14,0,Math.PI*2);X.fillStyle=cc;X.fill();
-    // Icon
-    X.font='13px serif';X.textAlign='center';X.textBaseline='middle';X.fillText(m.icon,sx,stepY);
-    // Label
-    txt(m.name,sx,stepY+24,9,m.active?'#fff':m.done?'#7dde92':'#666');
+    const cc=m.active?'#1A9900':m.depleted?'#cc2800':m.done?'#7dde92':i===activeIdx?'#ffd08a':'#444';
+    X.beginPath();X.arc(sx,sY,16,0,Math.PI*2);X.fillStyle=cc;X.fill();
+    if(i===activeIdx&&!m.done&&!m.active){
+      X.strokeStyle='#ffd08a';X.lineWidth=2;X.stroke();
+    }
+    X.font='14px serif';X.textAlign='center';X.textBaseline='middle';X.fillText(m.icon,sx,sY);
+    txt(m.name,sx,sY+26,10,m.active?'#fff':m.done?'#7dde92':'#666');
   });
+
+  // Bottom
+  X.fillStyle='rgba(10,10,24,0.92)';X.fillRect(0,H-50,W,50);
+  X.strokeStyle='#333';X.beginPath();X.moveTo(0,H-50);X.lineTo(W,H-50);X.stroke();
+  txt(msg,W/2,H-25,14,'#ccc');
+
+  const allA=machines.slice(0,7).every(m=>m.active);
+  if(allA){const p=Math.sin(gameTime*6)*0.2+0.8;X.globalAlpha=p;txt('🔥 COMBO — All machines running! +5x',W/2,H-72,16,'#ffd08a');X.globalAlpha=1;}
 }
 
-// ─── DRAW BOTTOM BAR ───
-function drawBottomBar(){
-  X.fillStyle='rgba(10,10,24,0.92)';X.fillRect(0,H-48,W,48);
-  X.strokeStyle='#333';X.lineWidth=1;X.beginPath();X.moveTo(0,H-48);X.lineTo(W,H-48);X.stroke();
-  txt(msg,W/2,H-24,13,'#aaa');
-
-  // Combo
-  const allActive=machines.slice(0,7).every(m=>m.active);
-  if(allActive){
-    const p=Math.sin(gameTime*6)*0.2+0.8;
-    X.globalAlpha=p;
-    txt('🔥 COMBO — All machines running! +5x Score',W/2,H-68,15,'#ffd08a');
-    X.globalAlpha=1;
-  }
-}
-
-// ─── DRAW MENU ───
 function drawMenu(){
   drawBG();
-  fillRR(W/2-260,170,520,320,20,'rgba(10,10,24,0.95)');
-  strokeRR(W/2-260,170,520,320,20,'#c47a2c',2);
-  txt('🍺 Igloo Brewery',W/2,245,36,'#ffd08a');
-  txt('Interactive Brew Game',W/2,290,20,'#aaa');
-  fillRR(W/2-90,345,180,50,10,'#c47a2c');
-  txt('▶ PLAY',W/2,370,22,'#fff');
-  txt('Manage the brewery supply chain!',W/2,425,14,'#777');
-  txt('Keep all machines running to produce beer.',W/2,448,12,'#555');
+  frr(W/2-280,160,560,340,24,'rgba(10,10,24,0.95)');
+  srr(W/2-280,160,560,340,24,'#c47a2c',3);
+  txt('🍺 Igloo Brewery',W/2,230,40,'#ffd08a');
+  txt('Interactive Brew Game',W/2,280,22,'#aaa');
+  frr(W/2-100,330,200,55,12,'#c47a2c');
+  txt('▶ PLAY',W/2,358,24,'#fff');
+  txt('Manage the brewery supply chain!',W/2,420,15,'#777');
+  txt('Keep all machines running to brew beer.',W/2,445,13,'#555');
 }
 
-// ─── DRAW RESULT ───
 function drawResult(){
   drawBG();
-  fillRR(W/2-260,140,520,380,20,'rgba(10,10,24,0.95)');
-  strokeRR(W/2-260,140,520,380,20,'#c47a2c',2);
-  txt("⏱️ Time's Up!",W/2,210,32,'#ffd08a');
-  txt(Math.floor(score)+' L',W/2,280,52,'#1A9900');
-  txt(Math.floor(score/50)+' kegs produced',W/2,330,18,'#aaa');
-  fillRR(W/2-90,380,180,50,10,'#c47a2c');
-  txt('🔄 BREW AGAIN',W/2,405,20,'#fff');
+  frr(W/2-280,130,560,400,24,'rgba(10,10,24,0.95)');
+  srr(W/2-280,130,560,400,24,'#c47a2c',3);
+  txt("⏱️ Time's Up!",W/2,200,36,'#ffd08a');
+  txt(score.toFixed(0)+' L',W/2,270,56,'#1A9900');
+  txt(Math.floor(score/50)+' kegs produced',W/2,325,20,'#aaa');
+  frr(W/2-100,375,200,55,12,'#c47a2c');
+  txt('🔄 BREW AGAIN',W/2,403,22,'#fff');
 }
 
 // ─── UPDATE ───
 function update(dt){
   if(state!=='game')return;
   gameTime+=dt;
-
-  // Timer
   timerAcc+=dt;
   if(timerAcc>=1){timeLeft--;timerAcc-=1;if(timeLeft<=0){state='result';return;}}
+  scrollX=lerp(scrollX,targetScrollX,0.1);
 
-  // Scroll smoothing
-  scrollX=lerp(scrollX,targetScrollX,0.12);
-
-  // Machine chain logic
+  // Chain: each machine processes when active, then marks done
   machines.forEach((m,i)=>{
     const prev=i>0?machines[i-1]:null;
 
-    // Check if machine can receive material from previous
-    const canReceive=i===0||prev.done;
+    // Machine activates when player interacts AND prev is done (or is first)
+    // When active, process counts down. When process hits 0, machine is "done"
+    // Next machine can then activate.
 
-    // Lever control
-    if(m.ctrl==='lever'&&m.leverPulled&&!m.active&&!m.depleted&&canReceive){
-      m.active=true;m.done=false;m.process=100;
-    }
-
-    // Hold control
-    if(m.ctrl==='hold'&&m.holding&&canReceive){
-      m.holdPower+=dt*35;
-      if(m.holdPower>=100){
-        m.holdPower=0;
-        if(!m.active&&!m.depleted){m.active=true;m.done=false;m.process=100;}
-      }
-    }
-
-    // Dual control
-    if(m.ctrl==='dual'&&(m.toggleL||m.toggleR)&&canReceive&&!m.active&&!m.depleted){
-      m.active=true;m.done=false;m.process=100;
-    }
-
-    // Active machine depletes and processes
     if(m.active){
-      // Process (material flowing through)
-      m.process-=dt*(8+i*1.5);
-      // Balance adjustment for dual machines
-      if(m.ctrl==='dual'){
-        if(m.toggleL)m.toggleBalance=Math.max(0,m.toggleBalance-dt*1.2);
-        if(m.toggleR)m.toggleBalance=Math.min(1,m.toggleBalance+dt*1.2);
-        // If balanced, process faster
-        if(m.toggleBalance>0.35&&m.toggleBalance<0.65){
-          m.process-=dt*3;
-        }
-      }
-      if(m.process<=0){
-        m.process=0;
-        m.active=false;
-        m.done=true;
-        m.leverPulled=false;
-        m.toggleL=false;m.toggleR=false;
-        m.holding=false;m.holdPower=0;
-        score+=15;
-        // Spawn particles
-        for(let j=0;j<12;j++){
-          particles.push({x:m.x-scrollX+rnd(-30,30),y:350+rnd(-40,0),vx:rnd(-80,80),vy:rnd(-120,-30),life:rnd(0.4,0.9),color:m.color});
+      // Process countdown
+      let speed = 10 + i*2;
+      m.process -= dt * speed;
+      m.fill = clamp(m.process, 0, 100);
+      m.shakeX = Math.sin(gameTime*30)*1.5;
+
+      if(m.process <= 0){
+        m.process = 0;
+        m.active = false;
+        m.done = true;
+        m.leverPulled = false;
+        m.toggleL = false; m.toggleR = false;
+        m.holding = false; m.holdPower = 0;
+        m.fill = 0;
+        m.shakeX = 0;
+        score += 15;
+        activeIdx = Math.min(i + 1, machines.length - 1);
+        msg = `✅ ${m.name} done! Next: ${machines[activeIdx].icon} ${machines[activeIdx].name}`;
+        // Particles
+        for(let j=0;j<15;j++){
+          particles.push({x:m.x-scrollX+rnd(-40,40),y:370+rnd(-50,0),vx:rnd(-100,100),vy:rnd(-150,-40),life:rnd(0.4,1),color:m.color});
         }
       }
     }
 
-    // Deplete done state if next machine is consuming
-    if(m.done&&i<machines.length-1){
-      const next=machines[i+1];
-      if(next.active||next.holding||(next.ctrl==='dual'&&(next.toggleL||next.toggleR))){
-        // Material being consumed, gradually empty
-        m.done=false;
-      }
+    // Grain fall for silo
+    if(m.id==='silo'&&m.leverPulled&&m.active){
+      if(Math.random()<0.4) m.grainFall.push({x:rnd(-25,25),y:300});
     }
-
-    // Grain fall animation for silo
-    if(m.id==='silo'&&m.leverPulled){
-      if(Math.random()<0.3){
-        m.grainFall.push({x:rnd(-20,20),y:280});
-      }
-    }
-    m.grainFall=m.grainFall.filter(p=>{
-      p.y+=dt*120;
-      return p.y<420;
-    });
+    m.grainFall=m.grainFall.filter(p=>{p.y+=dt*140;return p.y<440;});
   });
 
   // Combo
-  const allActive=machines.slice(0,7).every(m=>m.active);
-  if(allActive){comboTimer+=dt;if(comboTimer>=1){score+=15*5;comboTimer=0;}}
-  else{comboTimer=0;}
+  const allA=machines.slice(0,7).every(m=>m.active);
+  if(allA){/* combo score handled in activate */}
 
-  // Score display
-  displayScore=lerp(displayScore,score,0.08);
+  displayScore=lerp(displayScore,score,0.1);
+
+  particles=particles.filter(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=250*dt;p.life-=dt;return p.life>0;});
+}
+
+function activateMachine(i){
+  const m=machines[i];
+  const prev=i>0?machines[i-1]:null;
+  if(m.active||m.depleted)return;
+  if(prev&&!prev.done&&i!==0)return; // chain not ready
+
+  m.active=true;
+  m.done=false;
+  m.process=100;
+  m.fill=100;
+
+  if(m.ctrl==='lever')m.leverPulled=true;
+  if(m.ctrl==='hold'){m.holding=true;m.holdPower=0;}
+  if(m.ctrl==='dual'){m.toggleBalance=0.5;if(m.x%200<100)m.toggleL=true;else m.toggleR=true;}
+
+  if(i===0)msg=`${m.icon} Silo filling! Grain flowing to Milling...`;
+  else msg=`${m.icon} ${m.name} activated!`;
 
   // Particles
-  particles=particles.filter(p=>{
-    p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=200*dt;p.life-=dt;
-    return p.life>0;
-  });
+  for(let j=0;j<10;j++){
+    particles.push({x:m.x-scrollX+rnd(-30,30),y:370+rnd(-40,0),vx:rnd(-80,80),vy:rnd(-120,-30),life:rnd(0.3,0.7),color:m.color});
+  }
 }
 
 // ─── RENDER ───
@@ -453,106 +404,86 @@ function render(){
   X.clearRect(0,0,W,H);
   if(state==='menu'){drawMenu();return;}
   if(state==='result'){drawResult();return;}
-
-  drawBG();
-  drawPipes();
+  drawBG();drawPipes();
   machines.forEach(m=>drawMachine(m));
-
-  // Particles
-  particles.forEach(p=>{
-    X.globalAlpha=clamp(p.life*2,0,1);
-    X.beginPath();X.arc(p.x,p.y,4,0,Math.PI*2);X.fillStyle=p.color;X.fill();
-    X.globalAlpha=1;
-  });
-
-  drawTopBar();
-  drawBottomBar();
+  particles.forEach(p=>{X.globalAlpha=clamp(p.life*2,0,1);X.beginPath();X.arc(p.x,p.y,5,0,Math.PI*2);X.fillStyle=p.color;X.fill();X.globalAlpha=1;});
+  drawUI();
 }
 
 // ─── INPUT ───
-function getPos(e){
+function getXY(e){
   const r=C.getBoundingClientRect();
   return{x:(e.clientX-r.left)/scale,y:(e.clientY-r.top)/scale};
 }
 
-C.addEventListener('mousedown',e=>{
-  const p=getPos(e);
-  handleClick(p.x,p.y);
-});
-C.addEventListener('mouseup',()=>{
-  machines.forEach(m=>{if(m.ctrl==='hold')m.holding=false;});
-});
-
-C.addEventListener('touchstart',e=>{
-  e.preventDefault();
-  const t=e.touches[0];
-  const r=C.getBoundingClientRect();
-  const px=(t.clientX-r.left)/scale,py=(t.clientY-r.top)/scale;
-  handleClick(px,py);
-  // Touch scroll
-  C._tx=t.clientX;C._tsx=targetScrollX;
-},{passive:false});
-C.addEventListener('touchmove',e=>{
-  e.preventDefault();
-  const t=e.touches[0];
-  const dx=t.clientX-C._tx;
-  targetScrollX=clamp(C._tsx+dx*0.8,-(GAME_W-W),0);
-},{passive:false});
-C.addEventListener('touchend',()=>{
-  machines.forEach(m=>{if(m.ctrl==='hold')m.holding=false;});
-});
-
-function handleClick(px,py){
+function handleDown(px,py){
   if(state==='menu'){
-    if(px>W/2-90&&px<W/2+90&&py>345&&py<395){state='game';initMachines();}
+    if(px>W/2-100&&px<W/2+100&&py>330&&py<385){state='game';initMachines();}
     return;
   }
   if(state==='result'){
-    if(px>W/2-90&&px<W/2+90&&py>380&&py<430){state='menu';}
+    if(px>W/2-100&&px<W/2+100&&py>375&&py<430){state='menu';}
     return;
   }
 
-  // Scroll arrows
-  if(px<50){targetScrollX=Math.min(0,targetScrollX+250);return;}
-  if(px>W-50){targetScrollX=Math.max(-(GAME_W-W),targetScrollX-250);return;}
+  // Scroll zones
+  if(px<60){targetScrollX=Math.min(0,targetScrollX+300);return;}
+  if(px>W-60){targetScrollX=Math.max(-(GAME_W-W),targetScrollX-300);return;}
 
-  // Machine clicks
+  // Machine controls
   machines.forEach((m,i)=>{
-    const sx=m.x-scrollX;
-    const my=350;
-    if(px>sx-65&&px<sx+65&&py>my-90&&py<my+110){
+    const sx=m.x-scrollX,my=370;
+    const cy=my+130/2+55;
+    if(px>sx-70&&px<sx+70&&py>my-100&&py<my+130){
       if(m.ctrl==='lever'){
-        m.leverPulled=!m.leverPulled;
-        msg=m.leverPulled?`${m.icon} ${m.name} activated!`:`${m.icon} ${m.name} stopped.`;
+        if(!m.active&&!m.depleted){
+          const prev=i>0?machines[i-1]:null;
+          if(!prev||prev.done||i===0){activateMachine(i);msg=`${m.icon} Lever pulled! ${m.name} filling...`;}
+          else{msg=`⏳ Wait for ${prev.icon} ${prev.name} to finish first!`;}
+        }else if(m.active){
+          m.leverPulled=false;m.active=false;m.done=true;m.process=0;m.fill=0;
+          activeIdx=i;msg=`${m.icon} ${m.name} stopped. Pull lever to restart.`;
+        }
       }else if(m.ctrl==='hold'){
-        m.holding=true;
-        msg=`Holding ${m.icon} ${m.name} power...`;
+        if(!m.active&&!m.depleted){
+          const prev=i>0?machines[i-1]:null;
+          if(!prev||prev.done||i===0){m.holding=true;activateMachine(i);msg=`Holding ${m.icon} ${m.name} power...`;}
+          else{msg=`⏳ Wait for ${prev.icon} ${prev.name} to finish first!`;}
+        }
       }else if(m.ctrl==='dual'){
-        // Check if left or right side clicked
-        if(px<sx){
-          m.toggleL=!m.toggleL;if(m.toggleL)m.toggleR=false;
-          msg=m.toggleL?`${m.icon} ${m.name} left active!`:`${m.icon} ${m.name} stopped.`;
-        }else{
-          m.toggleR=!m.toggleR;if(m.toggleR)m.toggleL=false;
-          msg=m.toggleR?`${m.icon} ${m.name} right active!`:`${m.icon} ${m.name} stopped.`;
+        if(!m.active&&!m.depleted){
+          const prev=i>0?machines[i-1]:null;
+          if(!prev||prev.done||i===0){
+            if(px<sx){m.toggleL=true;m.toggleR=false;}else{m.toggleR=true;m.toggleL=false;}
+            activateMachine(i);msg=`${m.icon} ${m.name} toggled!`;
+          }else{msg=`⏳ Wait for ${prev.icon} ${prev.name} to finish first!`;}
+        }else if(m.active){
+          // Adjust balance while active
+          if(px<sx){m.toggleBalance=Math.max(0,m.toggleBalance-0.15);m.toggleL=true;setTimeout(()=>m.toggleL=false,200);}
+          else{m.toggleBalance=Math.min(1,m.toggleBalance+0.15);m.toggleR=true;setTimeout(()=>m.toggleR=false,200);}
         }
       }
     }
   });
 }
 
-// ─── GAME LOOP ───
-let lastT=0;
-function loop(t){
-  const dt=Math.min((t-lastT)/1000,0.05);
-  lastT=t;
-  update(dt);
-  render();
-  requestAnimationFrame(loop);
+function handleUp(){
+  machines.forEach(m=>{
+    if(m.ctrl==='hold'&&!m.holding){
+      // Stop if released
+    }
+  });
 }
 
-initMachines();
-requestAnimationFrame(loop);
+C.addEventListener('mousedown',e=>{const p=getXY(e);handleDown(p.x,p.y);});
+C.addEventListener('mouseup',()=>{handleUp();});
+C.addEventListener('touchstart',e=>{e.preventDefault();const t=e.touches[0];const r=C.getBoundingClientRect();handleDown((t.clientX-r.left)/scale,(t.clientY-r.top)/scale);C._tx=t.clientX;C._tsx=targetScrollX;},{passive:false});
+C.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];targetScrollX=clamp(C._tsx+(t.clientX-C._tx)*0.8,-(GAME_W-W),0);},{passive:false});
+C.addEventListener('touchend',()=>{handleUp();});
+
+let lastT=0;
+function loop(t){const dt=Math.min((t-lastT)/1000,0.05);lastT=t;update(dt);render();requestAnimationFrame(loop);}
+initMachines();requestAnimationFrame(loop);
 </script>
 </body>
 </html>
