@@ -2,709 +2,652 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Igloo Brewery — Interactive Brew</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #0d0d1a;
-    color: #e0d8c8;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    overflow: hidden;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* Header */
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    background: linear-gradient(180deg, #1a1a2e, #12121f);
-    border-bottom: 1px solid #333;
-    flex-shrink: 0;
-  }
-  .header h1 {
-    font-size: 18px;
-    color: #ffd08a;
-    text-shadow: 0 0 10px rgba(255,160,50,0.3);
-  }
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-  .timer {
-    font-size: 20px;
-    font-weight: bold;
-    color: #ff6b6b;
-    font-variant-numeric: tabular-nums;
-  }
-  .score {
-    font-size: 16px;
-    color: #7dde92;
-    font-weight: bold;
-  }
-  .btn-close {
-    background: none;
-    border: 1px solid #555;
-    color: #aaa;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .btn-close:hover { border-color: #ff6b6b; color: #ff6b6b; }
-
-  /* Step tabs */
-  .step-tabs {
-    display: flex;
-    padding: 6px 8px;
-    background: #12121f;
-    border-bottom: 1px solid #2a2a3a;
-    gap: 2px;
-    flex-shrink: 0;
-    overflow-x: auto;
-  }
-  .step-tab {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 6px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
-    min-width: 50px;
-    border: 1px solid transparent;
-  }
-  .step-tab:hover { background: rgba(255,255,255,0.05); }
-  .step-tab.active {
-    background: rgba(196,122,44,0.15);
-    border-color: #c47a2c;
-  }
-  .step-tab.done {
-    background: rgba(46,204,113,0.1);
-  }
-  .step-tab .icon { font-size: 20px; }
-  .step-tab .label {
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-top: 2px;
-    color: #888;
-  }
-  .step-tab.active .label { color: #ffd08a; }
-  .step-tab.done .label { color: #7dde92; }
-
-  /* Game area */
-  .game-area {
-    flex: 1;
-    position: relative;
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-  .game-canvas {
-    height: 100%;
-    min-width: 1200px;
-    position: relative;
-  }
-
-  /* Equipment cards */
-  .equipment {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 120px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    transition: filter 0.3s;
-  }
-  .equipment.inactive { filter: brightness(0.4); }
-  .equipment.active { filter: brightness(1.1); }
-
-  .machine {
-    width: 100px;
-    height: 120px;
-    border-radius: 8px;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid #444;
-    background: linear-gradient(180deg, #2a2a3a, #1a1a2a);
-    transition: all 0.3s;
-  }
-  .machine.active {
-    border-color: #ffd08a;
-    box-shadow: 0 0 15px rgba(255,208,138,0.2);
-  }
-  .machine .body {
-    width: 70px;
-    height: 80px;
-    border-radius: 6px;
-    position: relative;
-    overflow: hidden;
-  }
-  .machine .liquid {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 0%;
-    transition: height 0.5s;
-    border-radius: 0 0 4px 4px;
-  }
-  .machine .liquid.filling { height: 70%; }
-
-  /* Controls */
-  .controls {
-    margin-top: 8px;
-    display: flex;
-    gap: 4px;
-    align-items: center;
-  }
-  .btn-control {
-    padding: 6px 12px;
-    border-radius: 4px;
-    border: 1px solid #555;
-    background: #2a2a3a;
-    color: #ddd;
-    font-size: 11px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .btn-control:hover { border-color: #ffd08a; color: #ffd08a; }
-  .btn-control.active { background: #c47a2c; border-color: #ffd08a; color: #fff; }
-
-  .lever {
-    width: 12px;
-    height: 40px;
-    background: #555;
-    border-radius: 3px;
-    cursor: pointer;
-    position: relative;
-    transition: background 0.2s;
-  }
-  .lever.pulled { background: #4a9eff; }
-  .lever::after {
-    content: '';
-    position: absolute;
-    width: 18px;
-    height: 8px;
-    background: #888;
-    border-radius: 2px;
-    left: -3px;
-    top: 4px;
-    transition: top 0.2s, background 0.2s;
-  }
-  .lever.pulled::after { top: 28px; background: #4a9eff; }
-
-  .toggle {
-    width: 36px;
-    height: 20px;
-    background: #333;
-    border-radius: 10px;
-    cursor: pointer;
-    position: relative;
-    transition: background 0.2s;
-  }
-  .toggle.on { background: #4a9eff; }
-  .toggle::after {
-    content: '';
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    background: #ddd;
-    border-radius: 50%;
-    top: 2px;
-    left: 2px;
-    transition: left 0.2s;
-  }
-  .toggle.on::after { left: 18px; }
-
-  .speed-control {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-  }
-  .speed-btn {
-    width: 20px;
-    height: 14px;
-    background: #2a2a3a;
-    border: 1px solid #555;
-    color: #aaa;
-    font-size: 10px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 2px;
-  }
-  .speed-btn:hover { border-color: #ffd08a; }
-  .speed-val {
-    font-size: 14px;
-    font-weight: bold;
-    color: #ffd08a;
-    min-width: 20px;
-    text-align: center;
-  }
-
-  /* Pipe connections */
-  .pipe {
-    position: absolute;
-    top: 50%;
-    height: 8px;
-    background: linear-gradient(180deg, #666, #444, #666);
-    border-radius: 4px;
-    transform: translateY(-50%);
-    z-index: 0;
-  }
-  .pipe.flowing {
-    background: linear-gradient(180deg, #666, #4a9eff, #666);
-    box-shadow: 0 0 8px rgba(74,158,255,0.3);
-  }
-
-  /* Message bar */
-  .message-bar {
-    padding: 10px 16px;
-    background: #12121f;
-    border-top: 1px solid #2a2a3a;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-shrink: 0;
-  }
-  .message {
-    font-size: 13px;
-    color: #aaa;
-  }
-  .message strong { color: #ffd08a; }
-  .message .err { color: #ff6b6b; }
-  .message .ok { color: #7dde92; }
-
-  .btn-reset {
-    padding: 8px 16px;
-    border-radius: 6px;
-    border: 1px solid #555;
-    background: #2a2a3a;
-    color: #ddd;
-    cursor: pointer;
-    font-size: 13px;
-  }
-  .btn-reset:hover { border-color: #ffd08a; }
-
-  /* Celebration */
-  .celebrate {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.8);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .celebrate.show { display: flex; }
-  .celebrate h2 { font-size: 32px; color: #ffd08a; }
-  .celebrate .final-score { font-size: 48px; color: #7dde92; font-weight: bold; }
-  .celebrate .btn-play {
-    padding: 12px 32px;
-    border-radius: 8px;
-    background: #c47a2c;
-    color: #fff;
-    border: none;
-    font-size: 16px;
-    cursor: pointer;
-  }
-  .celebrate .btn-exit {
-    padding: 10px 24px;
-    border-radius: 8px;
-    background: transparent;
-    color: #aaa;
-    border: 1px solid #555;
-    font-size: 14px;
-    cursor: pointer;
-  }
-
-  /* Steam particles */
-  .steam {
-    position: absolute;
-    width: 6px;
-    height: 6px;
-    background: rgba(200,200,220,0.4);
-    border-radius: 50%;
-    pointer-events: none;
-    animation: steam-rise 1.5s ease-out forwards;
-  }
-  @keyframes steam-rise {
-    0% { opacity: 0.6; transform: translateY(0) scale(1); }
-    100% { opacity: 0; transform: translateY(-40px) scale(2); }
-  }
-
-  /* Scroll hint */
-  .scroll-hint {
-    position: absolute;
-    bottom: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    color: #555;
-    font-size: 11px;
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 0.8; } }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; overflow: hidden; touch-action: none; font-family: 'Segoe UI', system-ui, sans-serif; }
+canvas { display: block; cursor: pointer; }
 </style>
 </head>
 <body>
-
-<div class="header">
-  <h1>🍺 Igloo Brewery — Interactive Brew</h1>
-  <div class="header-right">
-    <div class="score" id="score">0 L</div>
-    <div class="timer" id="timer">3:00</div>
-    <button class="btn-close" onclick="closeBrewery()">✕</button>
-  </div>
-</div>
-
-<div class="step-tabs" id="step-tabs"></div>
-
-<div class="game-area" id="game-area">
-  <div class="game-canvas" id="game-canvas"></div>
-  <div class="scroll-hint">← Scroll to see all equipment →</div>
-</div>
-
-<div class="message-bar">
-  <div class="message" id="msg"><strong>Welcome!</strong> Click the 🌾 Grain Silo to start brewing.</div>
-  <button class="btn-reset" onclick="brewReset()">🔄 Reset</button>
-</div>
-
-<div class="celebrate" id="brew-celebrate">
-  <h2>🎉 Brewing Complete!</h2>
-  <div class="final-score" id="final-score">0 L</div>
-  <p style="color:#aaa">You produced <span id="final-k">0</span> kegs of Igloo Craft Beer!</p>
-  <div style="display:flex;gap:12px;margin-top:12px;">
-    <button class="btn-play" onclick="brewReset(); document.getElementById('brew-celebrate').classList.remove('show');">🔄 Brew Again</button>
-    <button class="btn-exit" onclick="closeBrewery(); document.getElementById('brew-celebrate').classList.remove('show');">✕ Exit Brewery</button>
-  </div>
-</div>
-
+<canvas id="gameCanvas"></canvas>
 <script>
-// ─── Brew Steps ───
-const brewSteps = [
-  { id:'grain',   label:'Grain',   icon:'🌾', color:'#a0a0a0', liquidColor:'#d4a843', control:'lever',   desc:'Malted barley storage' },
-  { id:'mill',    label:'Mill',    icon:'⚙️', color:'#c47a2c', liquidColor:'#b8944a', control:'button',  desc:'Crush grain into grist' },
-  { id:'mash',    label:'Mash',    icon:'💧', color:'#8a8a8a', liquidColor:'#b8944a', control:'toggle',  desc:'65°C — convert starch to sugar' },
-  { id:'lauter',  label:'Lauter',  icon:'🔪', color:'#9a9a9a', liquidColor:'#d4b06a', control:'toggle',  desc:'Separate sweet wort from grain' },
-  { id:'brew',    label:'Brew',    icon:'🔥', color:'#aaaaaa', liquidColor:'#ff8c00', control:'button',  desc:'100°C boil with hops' },
-  { id:'cool',    label:'Cool',    icon:'❄️', color:'#7a9aaa', liquidColor:'#5a9aaa', control:'toggle',  desc:'Rapid cool to 18°C' },
-  { id:'ferment', label:'Ferment', icon:'🫧', color:'#8a8a8a', liquidColor:'#daa520', control:'lever',   desc:'Yeast converts sugar to alcohol' },
-  { id:'condition',label:'Condition',icon:'⏳',color:'#9a9a9a',liquidColor:'#c89838', control:'lever',   desc:'Maturation & cold settling' },
-  { id:'filter',  label:'Filter',  icon:'🔬', color:'#888888', liquidColor:'#e8c860', control:'button',  desc:'Polish clarity before packaging' },
-  { id:'package', label:'Package', icon:'🍺', color:'#7a7a7a', liquidColor:'#daa520', control:'keg',     desc:'Fill kegs for the taproom' },
+// ─── CONFIG ───
+const W = 1280, H = 768;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const r = Math.min(window.innerWidth / W, window.innerHeight / H);
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = (W * r) + 'px';
+  canvas.style.height = (H * r) + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── COLORS ───
+const C = {
+  bg: '#1a1a2e', bgWall: '#22223a', bgFloor: '#2a2a40', bgLight: '#333355',
+  pipe: '#555577', pipeActive: '#4a9eff',
+  static: '#cdb18a', alert: '#cc2800', active: '#1A9900',
+  gold: '#F7B744', teal: '#39959E', orange: '#E2A440',
+  steel: '#888899', darkSteel: '#555566',
+  text: '#cdb18a', white: '#ffffff'
+};
+
+// ─── GAME STATE ───
+let gameState = 'menu'; // menu, game, result
+let score = 0, displayScore = 0;
+let timeLeft = 180, timerAcc = 0;
+let scrollX = 0, targetScrollX = 0;
+let comboTimer = 0, comboScore = 0;
+let machines = [];
+let particles = [];
+let activeMachine = -1;
+
+// ─── MACHINE DEFINITIONS ───
+const MACHINE_DEFS = [
+  { name: 'Malt Silo', icon: '🌾', color: '#F7B747', control: 'lever', x: 150 },
+  { name: 'Milling', icon: '⚙️', color: '#c47a2c', control: 'power', x: 400 },
+  { name: 'Mashing', icon: '💧', color: '#39959E', control: 'toggle', x: 650 },
+  { name: 'Lautering', icon: '🔪', color: '#E2A440', control: 'toggle', x: 900 },
+  { name: 'Boiling', icon: '🔥', color: '#E24422', control: 'power', x: 1150 },
+  { name: 'Cooling', icon: '❄️', color: '#5599CC', control: 'toggle', x: 1400 },
+  { name: 'Fermentation', icon: '🫧', color: '#88AA44', control: 'lever', x: 1650 },
+  { name: 'Filtration', icon: '🔬', color: '#999999', control: 'power', x: 1900 },
+  { name: 'Packaging', icon: '🍺', color: '#AA8833', control: 'speed', x: 2150 },
 ];
 
-// ─── State ───
-let brewStep = 0;
-let brewScore = 0;
-let brewTimeLeft = 180; // 3 minutes
-let brewTimerInterval = null;
-let brewActive = false;
-let brewStepStates = {};
-let brewSpeeds = {};
-
-// ─── Init ───
-function initBrewGame() {
-  brewStep = 0;
-  brewScore = 0;
-  brewTimeLeft = 180;
-  brewActive = false;
-  brewStepStates = {};
-  brewSpeeds = {};
-  brewSteps.forEach(s => { brewStepStates[s.id] = false; brewSpeeds[s.id] = 1; });
-
-  // Build tabs
-  const tabsEl = document.getElementById('step-tabs');
-  tabsEl.innerHTML = '';
-  brewSteps.forEach((step, i) => {
-    const tab = document.createElement('div');
-    tab.className = 'step-tab' + (i === 0 ? ' active' : '');
-    tab.id = 'tab-' + step.id;
-    tab.innerHTML = `<span class="icon">${step.icon}</span><span class="label">${step.label}</span>`;
-    tab.onclick = () => selectStep(i);
-    tabsEl.appendChild(tab);
-  });
-
-  // Build equipment
-  buildEquipment();
-
-  // Update UI
-  updateScore();
-  updateTimer();
-  setMessage('<strong>Welcome!</strong> Click the 🌾 Grain Silo to start brewing.');
-
-  // Start timer
-  if (brewTimerInterval) clearInterval(brewTimerInterval);
-  brewTimerInterval = setInterval(() => {
-    if (!brewActive) return;
-    brewTimeLeft--;
-    updateTimer();
-    if (brewTimeLeft <= 0) endGame();
-  }, 1000);
+// ─── INIT MACHINES ───
+function initMachines() {
+  machines = MACHINE_DEFS.map((def, i) => ({
+    ...def,
+    index: i,
+    progress: 0,
+    maxProgress: 100,
+    active: false,
+    alertTimer: 0,
+    leverPulled: false,
+    toggleOn: false,
+    powerCharged: 0,
+    powerCharging: false,
+    speed: 1,
+    depleted: false,
+    fillLevel: 0,
+    steamTimer: 0,
+  }));
 }
 
-function buildEquipment() {
-  const canvas = document.getElementById('game-canvas');
-  canvas.innerHTML = '';
-
-  const startX = 40;
-  const gapX = 130;
-
-  brewSteps.forEach((step, i) => {
-    const x = startX + i * gapX;
-
-    // Equipment container
-    const eq = document.createElement('div');
-    eq.className = 'equipment inactive';
-    eq.id = 'eq-' + step.id;
-    eq.style.left = x + 'px';
-
-    // Machine
-    const machine = document.createElement('div');
-    machine.className = 'machine';
-    machine.id = 'machine-' + step.id;
-
-    // Body with liquid
-    const body = document.createElement('div');
-    body.className = 'body';
-    body.style.background = `linear-gradient(180deg, ${step.color}, ${darken(step.color, 30)})`;
-
-    const liquid = document.createElement('div');
-    liquid.className = 'liquid';
-    liquid.id = 'liquid-' + step.id;
-    liquid.style.background = `linear-gradient(180deg, ${step.liquidColor}cc, ${step.liquidColor})`;
-    body.appendChild(liquid);
-    machine.appendChild(body);
-
-    // Icon overlay
-    const icon = document.createElement('div');
-    icon.style.cssText = 'font-size:28px;margin-top:4px;position:relative;z-index:1;';
-    icon.textContent = step.icon;
-    machine.appendChild(icon);
-
-    eq.appendChild(machine);
-
-    // Controls
-    const controls = document.createElement('div');
-    controls.className = 'controls';
-    controls.id = 'controls-' + step.id;
-
-    if (step.control === 'lever') {
-      const lever = document.createElement('div');
-      lever.className = 'lever';
-      lever.id = 'lever-' + step.id;
-      lever.onclick = () => pullLever(step.id, i);
-      controls.appendChild(lever);
-    } else if (step.control === 'toggle') {
-      const toggle = document.createElement('div');
-      toggle.className = 'toggle';
-      toggle.id = 'toggle-' + step.id;
-      toggle.onclick = () => toggleSwitch(step.id, i);
-      controls.appendChild(toggle);
-    } else if (step.control === 'button') {
-      const btn = document.createElement('div');
-      btn.className = 'btn-control';
-      btn.id = 'btn-' + step.id;
-      btn.textContent = '▶ START';
-      btn.onclick = () => pressButton(step.id, i);
-      controls.appendChild(btn);
-    } else if (step.control === 'keg') {
-      const speedCtrl = document.createElement('div');
-      speedCtrl.className = 'speed-control';
-      speedCtrl.innerHTML = `
-        <div class="speed-btn" onclick="changeSpeed('${step.id}',1)">▲</div>
-        <div class="speed-val" id="speed-${step.id}">1</div>
-        <div class="speed-btn" onclick="changeSpeed('${step.id}',-1)">▼</div>
-      `;
-      controls.appendChild(speedCtrl);
-    }
-
-    eq.appendChild(controls);
-    canvas.appendChild(eq);
-
-    // Pipe to next
-    if (i < brewSteps.length - 1) {
-      const pipe = document.createElement('div');
-      pipe.className = 'pipe';
-      pipe.id = 'pipe-' + i;
-      pipe.style.left = (x + 108) + 'px';
-      pipe.style.width = (gapX - 16) + 'px';
-      canvas.appendChild(pipe);
-    }
-  });
+// ─── DRAWING HELPERS ───
+function drawRoundRect(x, y, w, h, r, fill, stroke) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); }
 }
 
-// ─── Controls ───
-function pullLever(id, index) {
-  if (index !== brewStep) { setMessage('<span class="err">Not yet!</span> Next step: <strong>' + brewSteps[brewStep].label + '</strong>'); return; }
-  const lever = document.getElementById('lever-' + id);
-  lever.classList.toggle('pulled');
-  if (lever.classList.contains('pulled')) activateStep(id, index);
+function drawCircle(x, y, r, fill, stroke) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); }
 }
 
-function toggleSwitch(id, index) {
-  if (index !== brewStep) { setMessage('<span class="err">Not yet!</span> Next step: <strong>' + brewSteps[brewStep].label + '</strong>'); return; }
-  const toggle = document.getElementById('toggle-' + id);
-  toggle.classList.toggle('on');
-  if (toggle.classList.contains('on')) activateStep(id, index);
+function drawText(text, x, y, size, color, align) {
+  ctx.font = `bold ${size}px "Segoe UI", system-ui, sans-serif`;
+  ctx.fillStyle = color || C.text;
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
 }
 
-function pressButton(id, index) {
-  if (index !== brewStep) { setMessage('<span class="err">Not yet!</span> Next step: <strong>' + brewSteps[brewStep].label + '</strong>'); return; }
-  const btn = document.getElementById('btn-' + id);
-  btn.classList.add('active');
-  btn.textContent = '✅ ACTIVE';
-  activateStep(id, index);
-}
+// ─── DRAW MACHINE ───
+function drawMachine(m, screenX) {
+  const mx = screenX;
+  const my = 340;
+  const mw = 100, mh = 140;
 
-function changeSpeed(id, delta) {
-  brewSpeeds[id] = Math.max(1, Math.min(3, (brewSpeeds[id] || 1) + delta));
-  document.getElementById('speed-' + id).textContent = brewSpeeds[id];
-  if (brewSpeeds[id] >= 2) activateStep(id, brewSteps.findIndex(s => s.id === id));
-}
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(mx, my + mh/2 + 20, mw/2, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
 
-function activateStep(id, index) {
-  brewStepStates[id] = true;
-  brewActive = true;
+  // Machine body
+  const bodyGrad = ctx.createLinearGradient(mx - mw/2, my - mh/2, mx + mw/2, my + mh/2);
+  bodyGrad.addColorStop(0, m.active ? lighten(m.color, 30) : '#3a3a4a');
+  bodyGrad.addColorStop(1, m.active ? m.color : '#2a2a3a');
+  drawRoundRect(mx - mw/2, my - mh/2, mw, mh, 8, bodyGrad, m.active ? '#ffd08a' : '#555');
 
-  // Visual feedback
-  const eq = document.getElementById('eq-' + id);
-  eq.classList.remove('inactive');
-  eq.classList.add('active');
-  document.getElementById('liquid-' + id).classList.add('filling');
-  document.getElementById('tab-' + id).classList.remove('active');
-  document.getElementById('tab-' + id).classList.add('done');
+  // Machine icon
+  ctx.font = '36px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(m.icon, mx, my - 10);
 
-  // Pipe flow
-  if (index < brewSteps.length - 1) {
-    document.getElementById('pipe-' + index).classList.add('flowing');
+  // Fill level (liquid inside)
+  if (m.fillLevel > 0) {
+    const fillH = (mh - 20) * (m.fillLevel / 100);
+    ctx.fillStyle = m.color + '88';
+    ctx.beginPath();
+    ctx.roundRect(mx - mw/2 + 8, my + mh/2 - 8 - fillH, mw - 16, fillH, [0, 0, 4, 4]);
+    ctx.fill();
   }
 
-  // Add score
-  const liters = 5 + Math.floor(Math.random() * 5);
-  brewScore += liters;
-  updateScore();
+  // Progress bar
+  const barW = mw - 10;
+  const barH = 8;
+  const barX = mx - barW / 2;
+  const barY = my + mh/2 + 15;
+  drawRoundRect(barX, barY, barW, barH, 3, '#222');
+  if (m.progress > 0) {
+    const pct = m.progress / m.maxProgress;
+    const barColor = pct > 0.5 ? C.active : pct > 0.2 ? C.alert : C.alert;
+    drawRoundRect(barX, barY, barW * pct, barH, 3, barColor);
+  }
 
-  // Steam effect for brewing
-  if (id === 'brew') spawnSteam('machine-' + id);
+  // Alert indicator
+  if (m.depleted && !m.active) {
+    const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
+    ctx.globalAlpha = pulse;
+    drawCircle(mx, my - mh/2 - 15, 6, C.alert);
+    ctx.globalAlpha = 1;
+  }
 
-  // Advance
-  if (index < brewSteps.length - 1) {
-    brewStep = index + 1;
-    document.getElementById('eq-' + brewSteps[brewStep].id).classList.remove('inactive');
-    document.getElementById('tab-' + brewSteps[brewStep].id).classList.add('active');
-    setMessage(`✅ ${brewSteps[index].label} done! Now: <strong>${brewSteps[brewStep].label}</strong> — ${brewSteps[brewStep].desc}`);
-  } else {
-    // Complete!
-    brewScore += 50; // keg bonus
-    updateScore();
-    setMessage('<span class="ok">🍺 Keg filled! +50L bonus.</span> Reset to brew again!');
-    // Reset chain for continuous play
-    setTimeout(() => {
-      brewStep = 0;
-      brewSteps.forEach((s, i) => {
-        brewStepStates[s.id] = false;
-        const eq = document.getElementById('eq-' + s.id);
-        eq.classList.remove('active');
-        eq.classList.add(i === 0 ? '' : 'inactive');
-        document.getElementById('liquid-' + s.id).classList.remove('filling');
-        document.getElementById('tab-' + s.id).classList.remove('done');
-        document.getElementById('tab-' + s.id).classList.toggle('active', i === 0);
-        if (s.control === 'lever') document.getElementById('lever-' + s.id)?.classList.remove('pulled');
-        if (s.control === 'toggle') document.getElementById('toggle-' + s.id)?.classList.remove('on');
-        if (s.control === 'button') { const b = document.getElementById('btn-' + s.id); if(b){b.classList.remove('active');b.textContent='▶ START';} }
-        if (i < brewSteps.length - 1) document.getElementById('pipe-' + i).classList.remove('flowing');
-      });
-      setMessage('<strong>New batch!</strong> Click the 🌾 Grain Silo to start.');
-    }, 1500);
+  // Active indicator
+  if (m.active) {
+    ctx.shadowColor = m.color;
+    ctx.shadowBlur = 15;
+    drawCircle(mx, my - mh/2 - 15, 6, C.active);
+    ctx.shadowBlur = 0;
+  }
+
+  // Controls
+  drawControl(m, mx, my + mh/2 + 40);
+
+  // Name
+  drawText(m.name, mx, my - mh/2 - 35, 13, '#aaa');
+
+  // Steam particles
+  if (m.active && m.steamTimer > 0) {
+    for (let i = 0; i < 3; i++) {
+      const sx = mx - 20 + Math.random() * 40;
+      const sy = my - mh/2 - 20 - Math.random() * 30;
+      const sr = 3 + Math.random() * 5;
+      ctx.globalAlpha = 0.3;
+      drawCircle(sx, sy, sr, '#aabbcc');
+      ctx.globalAlpha = 1;
+    }
   }
 }
 
-// ─── Helpers ───
-function selectStep(i) {
-  document.querySelectorAll('.step-tab').forEach((t, idx) => {
-    t.classList.toggle('active', idx === i && !brewStepStates[brewSteps[i].id]);
-  });
+function drawControl(m, cx, cy) {
+  if (m.control === 'lever') {
+    // Lever base
+    drawRoundRect(cx - 8, cy - 20, 16, 40, 4, '#444', '#666');
+    // Lever handle
+    const ly = m.leverPulled ? cy + 10 : cy - 15;
+    drawRoundRect(cx - 12, ly, 24, 10, 3, m.leverPulled ? '#4a9eff' : '#888');
+    drawText('LEVER', cx, cy + 30, 9, '#777');
+  } else if (m.control === 'toggle') {
+    // Toggle switch
+    const tw = 40, th = 22;
+    drawRoundRect(cx - tw/2, cy - th/2, tw, th, th/2, m.toggleOn ? '#4a9eff' : '#333', '#666');
+    drawCircle(cx + (m.toggleOn ? 9 : -9), cy, 8, '#ddd');
+    drawText('TOGGLE', cx, cy + 25, 9, '#777');
+  } else if (m.control === 'power') {
+    // Power button
+    const pr = 16;
+    drawCircle(cx, cy, pr + 3, '#333', '#666');
+    drawCircle(cx, cy, pr, m.powerCharging ? '#ff6644' : '#555');
+    // Power icon
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 8);
+    ctx.lineTo(cx, cy + 2);
+    ctx.lineTo(cx + 5, cy + 2);
+    ctx.lineTo(cx - 2, cy + 10);
+    ctx.lineTo(cx, cy);
+    ctx.lineTo(cx - 5, cy);
+    ctx.stroke();
+    drawText('POWER', cx, cy + 30, 9, '#777');
+  } else if (m.control === 'speed') {
+    // Speed control
+    drawRoundRect(cx - 18, cy - 14, 36, 28, 4, '#333', '#666');
+    drawText('▲', cx, cy - 6, 10, '#aaa');
+    drawText(String(m.speed), cx, cy + 2, 14, C.gold);
+    drawText('▼', cx, cy + 10, 10, '#aaa');
+    drawText('SPEED', cx, cy + 28, 9, '#777');
+  }
 }
 
-function updateScore() {
-  document.getElementById('score').textContent = brewScore + ' L';
+// ─── DRAW PIPE ───
+function drawPipe(x1, x2, y, active) {
+  ctx.fillStyle = active ? '#446688' : '#444466';
+  ctx.fillRect(x1, y - 4, x2 - x1, 8);
+  // Joints
+  ctx.fillStyle = active ? '#557799' : '#555577';
+  ctx.fillRect(x1 - 2, y - 6, 8, 12);
+  ctx.fillRect(x2 - 6, y - 6, 8, 12);
+  // Flow animation
+  if (active) {
+    const t = Date.now() / 300;
+    for (let i = 0; i < 5; i++) {
+      const fx = x1 + ((t + i * 0.2) % 1) * (x2 - x1);
+      ctx.globalAlpha = 0.6;
+      drawCircle(fx, y, 3, C.pipeActive);
+      ctx.globalAlpha = 1;
+    }
+  }
 }
 
-function updateTimer() {
-  const m = Math.floor(brewTimeLeft / 60);
-  const s = brewTimeLeft % 60;
-  document.getElementById('timer').textContent = m + ':' + s.toString().padStart(2, '0');
-}
+// ─── DRAW BACKGROUND ───
+function drawBackground() {
+  // Sky gradient
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+  skyGrad.addColorStop(0, '#0d0d1a');
+  skyGrad.addColorStop(0.6, '#1a1a2e');
+  skyGrad.addColorStop(1, '#22223a');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
 
-function setMessage(html) {
-  document.getElementById('msg').innerHTML = html;
-}
+  // Parallax back wall
+  const wallOff = scrollX * 0.3;
+  ctx.fillStyle = '#1e1e32';
+  for (let i = 0; i < 15; i++) {
+    const wx = (i * 200 - wallOff % 200) - 100;
+    ctx.fillRect(wx, 100, 160, 400);
+    // Windows
+    for (let wy = 0; wy < 4; wy++) {
+      ctx.fillStyle = Math.random() > 0.5 ? '#333355' : '#2a2a44';
+      ctx.fillRect(wx + 20, 130 + wy * 80, 30, 40);
+      ctx.fillRect(wx + 70, 130 + wy * 80, 30, 40);
+      ctx.fillRect(wx + 120, 130 + wy * 80, 30, 40);
+    }
+    ctx.fillStyle = '#1e1e32';
+  }
 
-function spawnSteam(machineId) {
-  const machine = document.getElementById(machineId);
-  if (!machine) return;
+  // Parallax mid wall
+  const midOff = scrollX * 0.6;
+  ctx.fillStyle = '#252540';
+  for (let i = 0; i < 10; i++) {
+    const wx = (i * 280 - midOff % 280) - 140;
+    ctx.fillRect(wx, 180, 220, 350);
+    // Pipes on wall
+    ctx.fillStyle = '#333350';
+    ctx.fillRect(wx + 10, 200, 200, 6);
+    ctx.fillRect(wx + 10, 350, 200, 6);
+    ctx.fillStyle = '#252540';
+  }
+
+  // Floor
+  const floorGrad = ctx.createLinearGradient(0, 520, 0, H);
+  floorGrad.addColorStop(0, '#2a2a44');
+  floorGrad.addColorStop(1, '#1e1e36');
+  ctx.fillStyle = floorGrad;
+  ctx.fillRect(0, 520, W, H - 520);
+
+  // Floor tiles
+  const tileOff = scrollX * 1.0;
+  ctx.strokeStyle = '#333350';
+  ctx.lineWidth = 1;
+  for (let i = -1; i < 30; i++) {
+    const tx = (i * 80 - tileOff % 80);
+    ctx.beginPath();
+    ctx.moveTo(tx, 520);
+    ctx.lineTo(tx, H);
+    ctx.stroke();
+  }
+  for (let j = 0; j < 4; j++) {
+    ctx.beginPath();
+    ctx.moveTo(0, 520 + j * 65);
+    ctx.lineTo(W, 520 + j * 65);
+    ctx.stroke();
+  }
+
+  // Hanging lights
+  const lightOff = scrollX * 0.8;
   for (let i = 0; i < 8; i++) {
-    setTimeout(() => {
-      const steam = document.createElement('div');
-      steam.className = 'steam';
-      steam.style.left = (20 + Math.random() * 60) + 'px';
-      steam.style.top = '-5px';
-      machine.appendChild(steam);
-      setTimeout(() => steam.remove(), 1500);
-    }, i * 200);
+    const lx = (i * 180 + 90 - lightOff % 180);
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(lx, 0);
+    ctx.lineTo(lx, 60);
+    ctx.stroke();
+    // Light glow
+    const glowGrad = ctx.createRadialGradient(lx, 70, 5, lx, 70, 80);
+    glowGrad.addColorStop(0, 'rgba(255,220,150,0.15)');
+    glowGrad.addColorStop(1, 'rgba(255,220,150,0)');
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(lx - 80, 60, 160, 160);
+    // Bulb
+    drawCircle(lx, 70, 8, '#ffdd99');
   }
 }
 
-function darken(hex, amount) {
-  let r = parseInt(hex.slice(1,3), 16);
-  let g = parseInt(hex.slice(3,5), 16);
-  let b = parseInt(hex.slice(5,7), 16);
-  r = Math.max(0, r - amount);
-  g = Math.max(0, g - amount);
-  b = Math.max(0, b - amount);
-  return '#' + [r,g,b].map(c => c.toString(16).padStart(2,'0')).join('');
+// ─── DRAW UI ───
+function drawUI() {
+  // Header bar
+  ctx.fillStyle = 'rgba(13,13,26,0.9)';
+  ctx.fillRect(0, 0, W, 55);
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, 55); ctx.lineTo(W, 55); ctx.stroke();
+
+  // Title
+  drawText('🍺 Igloo Brewery — Interactive Brew', 250, 28, 18, C.gold);
+
+  // Score
+  drawText(`${Math.floor(displayScore)} L`, W - 180, 28, 20, C.active, 'right');
+
+  // Timer
+  const tm = Math.floor(timeLeft / 60);
+  const ts = Math.floor(timeLeft % 60);
+  const timerStr = `${tm}:${ts.toString().padStart(2, '0')}`;
+  drawText(timerStr, W - 60, 28, 22, timeLeft < 30 ? C.alert : '#ff6b6b', 'right');
+
+  // Progress steps at top
+  const stepY = 65;
+  const stepW = W / machines.length;
+  machines.forEach((m, i) => {
+    const sx = stepW * i + stepW / 2;
+    // Circle
+    const circleColor = m.active ? C.active : m.depleted ? C.alert : '#444';
+    drawCircle(sx, stepY, 14, circleColor);
+    // Icon
+    ctx.font = '14px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(m.icon, sx, stepY);
+    // Label
+    drawText(m.name, sx, stepY + 22, 9, m.active ? '#fff' : '#777');
+    // Connection line
+    if (i < machines.length - 1) {
+      const pipeActive = m.active && machines[i + 1].active;
+      ctx.strokeStyle = pipeActive ? C.pipeActive : '#444';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(sx + 16, stepY);
+      ctx.lineTo(sx + stepW - 16, stepY);
+      ctx.stroke();
+    }
+  });
+
+  // Message bar at bottom
+  ctx.fillStyle = 'rgba(13,13,26,0.9)';
+  ctx.fillRect(0, H - 45, W, 45);
+  ctx.strokeStyle = '#333';
+  ctx.beginPath(); ctx.moveTo(0, H - 45); ctx.lineTo(W, H - 45); ctx.stroke();
+
+  const activeIdx = machines.findIndex(m => !m.active && !m.depleted) >= 0
+    ? machines.findIndex(m => !m.active && m.progress < 100)
+    : 0;
+  const nextMachine = machines[activeIdx] || machines[0];
+  drawText(`Click ${nextMachine.icon} ${nextMachine.name} to operate`, W / 2, H - 22, 13, '#aaa');
+
+  // Combo indicator
+  const allActive = machines.every(m => m.active);
+  if (allActive) {
+    const pulse = Math.sin(Date.now() / 150) * 0.2 + 0.8;
+    ctx.globalAlpha = pulse;
+    drawText('🔥 COMBO! All machines running! +5x Score', W / 2, H - 65, 16, '#ffd08a');
+    ctx.globalAlpha = 1;
+  }
 }
 
-function endGame() {
-  brewActive = false;
-  clearInterval(brewTimerInterval);
-  const kegs = Math.floor(brewScore / 50);
-  document.getElementById('final-score').textContent = brewScore + ' L';
-  document.getElementById('final-k').textContent = kegs;
-  document.getElementById('brew-celebrate').classList.add('show');
+// ─── DRAW MENU ───
+function drawMenu() {
+  drawBackground();
+
+  // Title card
+  drawRoundRect(W/2 - 250, 180, 500, 300, 20, 'rgba(13,13,26,0.95)', '#c47a2c');
+  drawText('🍺 Igloo Brewery', W/2, 260, 36, C.gold);
+  drawText('Interactive Brew Game', W/2, 305, 20, '#aaa');
+
+  // Play button
+  drawRoundRect(W/2 - 80, 360, 160, 50, 10, '#c47a2c');
+  drawText('▶ PLAY', W/2, 385, 22, '#fff');
+
+  drawText('Manage the brewery supply chain!', W/2, 440, 14, '#777');
+  drawText('Keep all machines running to produce beer.', W/2, 460, 12, '#555');
 }
 
-function brewReset() {
-  if (brewTimerInterval) clearInterval(brewTimerInterval);
-  initBrewGame();
+// ─── DRAW RESULT ───
+function drawResult() {
+  drawBackground();
+  drawRoundRect(W/2 - 250, 150, 500, 350, 20, 'rgba(13,13,26,0.95)', '#c47a2c');
+  drawText("⏱️ Time's Up!", W/2, 220, 32, C.gold);
+  drawText(`${Math.floor(score)} L`, W/2, 290, 52, C.active);
+  drawText(`${Math.floor(score / 50)} kegs produced`, W/2, 340, 18, '#aaa');
+
+  // Replay button
+  drawRoundRect(W/2 - 80, 390, 160, 50, 10, '#c47a2c');
+  drawText('🔄 BREW AGAIN', W/2, 415, 20, '#fff');
 }
 
-function closeBrewery() {
-  document.getElementById('brewery-overlay').style.display = 'none';
-  if (brewTimerInterval) clearInterval(brewTimerInterval);
+// ─── UPDATE ───
+function update(dt) {
+  if (gameState !== 'game') return;
+
+  // Timer
+  timerAcc += dt;
+  if (timerAcc >= 1) {
+    timeLeft--;
+    timerAcc -= 1;
+    if (timeLeft <= 0) { gameState = 'result'; return; }
+  }
+
+  // Scroll smoothing
+  scrollX += (targetScrollX - scrollX) * 0.1;
+
+  // Machine updates
+  let allActive = true;
+  machines.forEach((m, i) => {
+    // Progress depletion
+    if (m.active) {
+      m.progress -= dt * (8 + m.speed * 3);
+      m.fillLevel = Math.max(0, m.fillLevel - dt * 5);
+      m.steamTimer = 1;
+      if (m.progress <= 0) {
+        m.progress = 0;
+        m.active = false;
+        m.depleted = true;
+        m.leverPulled = false;
+        m.toggleOn = false;
+        m.powerCharging = false;
+      }
+    } else {
+      allActive = false;
+      m.steamTimer = 0;
+    }
+
+    // Power charging
+    if (m.powerCharging && m.control === 'power') {
+      m.powerCharged += dt * 40;
+      if (m.powerCharged >= 100) {
+        m.powerCharged = 0;
+        m.powerCharging = false;
+        activateMachine(i);
+      }
+    }
+
+    // Fill animation
+    if (m.active) {
+      m.fillLevel = Math.min(100, m.fillLevel + dt * 20);
+    }
+  });
+
+  // Combo
+  if (allActive) {
+    comboTimer += dt;
+    if (comboTimer >= 1) {
+      score += 15 * machines[0].speed;
+      comboTimer = 0;
+    }
+  } else {
+    comboTimer = 0;
+  }
+
+  // Score display smoothing
+  displayScore += (score - displayScore) * 0.1;
+
+  // Particles
+  particles = particles.filter(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    return p.life > 0;
+  });
 }
 
-// Auto-init
-initBrewGame();
+function activateMachine(i) {
+  machines[i].active = true;
+  machines[i].depleted = false;
+  machines[i].progress = 100;
+  machines[i].fillLevel = 50;
+  score += 10;
+
+  // Particles
+  for (let j = 0; j < 8; j++) {
+    particles.push({
+      x: machines[i].x - scrollX,
+      y: 340,
+      vx: (Math.random() - 0.5) * 200,
+      vy: -Math.random() * 150 - 50,
+      life: 0.5 + Math.random() * 0.5,
+      color: machines[i].color,
+    });
+  }
+}
+
+// ─── RENDER ───
+function render() {
+  ctx.clearRect(0, 0, W, H);
+
+  if (gameState === 'menu') { drawMenu(); return; }
+  if (gameState === 'result') { drawResult(); return; }
+
+  drawBackground();
+
+  // Draw pipes between machines
+  machines.forEach((m, i) => {
+    if (i < machines.length - 1) {
+      const x1 = m.x - scrollX + 55;
+      const x2 = machines[i + 1].x - scrollX - 55;
+      drawPipe(x1, x2, 410, m.active && machines[i + 1].active);
+    }
+  });
+
+  // Draw machines
+  machines.forEach(m => {
+    const sx = m.x - scrollX;
+    if (sx > -150 && sx < W + 150) {
+      drawMachine(m, sx);
+    }
+  });
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    drawCircle(p.x, p.y, 4, p.color);
+    ctx.globalAlpha = 1;
+  });
+
+  drawUI();
+}
+
+// ─── INPUT ───
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+
+  if (gameState === 'menu') {
+    if (mx > W/2 - 80 && mx < W/2 + 80 && my > 360 && my < 410) {
+      gameState = 'game';
+      score = 0; displayScore = 0; timeLeft = 180; timerAcc = 0;
+      scrollX = 0; targetScrollX = 0;
+      initMachines();
+    }
+    return;
+  }
+
+  if (gameState === 'result') {
+    if (mx > W/2 - 80 && mx < W/2 + 80 && my > 390 && my < 440) {
+      gameState = 'menu';
+    }
+    return;
+  }
+
+  // Game click
+  machines.forEach((m, i) => {
+    const sx = m.x - scrollX;
+    const my2 = 340;
+
+    // Machine click area
+    if (mx > sx - 60 && mx < sx + 60 && my > my2 - 80 && my < my2 + 100) {
+      if (m.control === 'lever') {
+        m.leverPulled = !m.leverPulled;
+        if (m.leverPulled) activateMachine(i);
+      } else if (m.control === 'toggle') {
+        m.toggleOn = !m.toggleOn;
+        if (m.toggleOn) activateMachine(i);
+      } else if (m.control === 'power') {
+        m.powerCharging = true;
+      } else if (m.control === 'speed') {
+        // Check if clicked on up or down
+        if (my < my2 + 40) {
+          m.speed = Math.min(3, m.speed + 1);
+        } else {
+          m.speed = Math.max(1, m.speed - 1);
+        }
+        if (m.speed >= 2) activateMachine(i);
+      }
+    }
+  });
+
+  // Scroll arrows
+  if (mx < 60) targetScrollX = Math.min(0, targetScrollX + 200);
+  if (mx > W - 60) targetScrollX = Math.max(-900, targetScrollX - 200);
+});
+
+// Power button release
+canvas.addEventListener('mouseup', () => {
+  machines.forEach(m => {
+    if (m.control === 'power') m.powerCharging = false;
+  });
+});
+
+// Touch scroll
+let touchStartX = 0, touchScrollStart = 0;
+canvas.addEventListener('touchstart', (e) => {
+  touchStartX = e.touches[0].clientX;
+  touchScrollStart = targetScrollX;
+});
+canvas.addEventListener('touchmove', (e) => {
+  const dx = e.touches[0].clientX - touchStartX;
+  targetScrollX = Math.max(-900, Math.min(0, touchScrollStart + dx * 0.5));
+  e.preventDefault();
+});
+
+// ─── GAME LOOP ───
+let lastTime = 0;
+function gameLoop(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.1);
+  lastTime = time;
+  update(dt);
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+initMachines();
+requestAnimationFrame(gameLoop);
 </script>
 </body>
 </html>
