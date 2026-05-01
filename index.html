@@ -12,6 +12,21 @@ canvas{display:block;position:absolute;top:0;left:0}
 </style>
 </head>
 <body>
+<script>
+// Authelia auth gate
+(function() {
+  const AUTH_KEY = 'igloo_auth_' + location.hostname;
+  const AUTH_URL = 'https://auth.chaitanyakhanapure.com';
+  
+  // Check if already authenticated
+  if (!sessionStorage.getItem(AUTH_KEY)) {
+    // Store return URL and redirect to Authelia
+    sessionStorage.setItem('auth_return', location.href);
+    location.href = AUTH_URL + '/api/verify?rd=' + encodeURIComponent(location.href);
+  }
+})();
+</script>
+
 <canvas id="c"></canvas>
 <script>
 const C=document.getElementById('c'),X=C.getContext('2d');
